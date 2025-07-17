@@ -10,10 +10,12 @@ using System.Linq;
 using System.Windows.Forms;
 using OpenCvSharp;
 using MosaicCensorSystem.Capture;
-using MosaicCensorSystem.Detection;
 using MosaicCensorSystem.Overlay;
 using MosaicCensorSystem.UI;
 using MosaicCensorSystem.Diagnostics;
+
+// 네임스페이스 충돌 해결 - Detection 네임스페이스는 using하지 않음
+// using MosaicCensorSystem.Detection;
 
 namespace MosaicCensorSystem
 {
@@ -23,7 +25,7 @@ namespace MosaicCensorSystem
         public Form Root { get; private set; }
         
         private ScreenCapturer capturer;
-        private SafeMosaicProcessor safeProcessor; // 구체적인 타입으로 변경
+        private MosaicCensorSystem.Detection.MosaicProcessor mosaicProcessor; // 전체 경로 사용
         private FullscreenOverlay overlay;
         
         private ScrollablePanel scrollableContainer;
@@ -58,7 +60,7 @@ namespace MosaicCensorSystem
         
         // 설정값들
         private int targetFPS = 15;
-        private float currentConfidence = 0.7f;
+        private float currentConfidence = 0.3f; // 더 낮은 기본값으로 설정
         private int currentStrength = 20;
         private bool enableDetection = false;
         private bool enableCensoring = false;
@@ -81,7 +83,7 @@ namespace MosaicCensorSystem
         {
             Root = new Form
             {
-                Text = "점진적 기능 복구 화면 검열 시스템 v6.0 (안전한 단계별 복구)",
+                Text = "ONNX 가이드 기반 화면 검열 시스템 v7.0 (MosaicProcessor)",
                 Size = new System.Drawing.Size(500, 850),
                 MinimumSize = new System.Drawing.Size(450, 650),
                 StartPosition = FormStartPosition.CenterScreen
@@ -89,15 +91,15 @@ namespace MosaicCensorSystem
             
             try
             {
-                Console.WriteLine("🔧 점진적 기능 복구 모드로 컴포넌트 초기화 중...");
+                Console.WriteLine("🔧 ONNX 가이드 기반 MosaicProcessor로 컴포넌트 초기화 중...");
                 
-                InitializeSafeComponents();
+                InitializeComponents();
                 CreateGui();
                 
                 Root.FormClosed += OnFormClosed;
                 Root.FormClosing += OnFormClosing;
                 
-                Console.WriteLine("✅ 점진적 기능 복구 모드 MosaicApp 초기화 완료");
+                Console.WriteLine("✅ MosaicProcessor 기반 MosaicApp 초기화 완료");
             }
             catch (Exception ex)
             {
@@ -111,7 +113,7 @@ namespace MosaicCensorSystem
         // 3. Public 메서드
         public void Run()
         {
-            Console.WriteLine("🔄 점진적 기능 복구 화면 검열 시스템 v6.0 시작");
+            Console.WriteLine("🔄 ONNX 가이드 기반 화면 검열 시스템 v7.0 시작");
             Console.WriteLine("=" + new string('=', 60));
             
             try
@@ -120,7 +122,7 @@ namespace MosaicCensorSystem
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"\n🛑 점진적 복구 모드 오류 발생: {ex.Message}");
+                Console.WriteLine($"\n🛑 MosaicProcessor 모드 오류 발생: {ex.Message}");
                 LogMessage($"❌ 애플리케이션 오류: {ex.Message}");
             }
             finally
@@ -130,7 +132,7 @@ namespace MosaicCensorSystem
         }
 
         // 4. Private 초기화 메서드들
-        private void InitializeSafeComponents()
+        private void InitializeComponents()
         {
             try
             {
@@ -147,18 +149,23 @@ namespace MosaicCensorSystem
             try
             {
                 Console.WriteLine("2. 진단 도구 실행 중...");
-                // 진단 도구 실행
                 OnnxDiagnostics.RunFullDiagnostics();
                 
-                Console.WriteLine("3. 안전 프로세서 초기화 중...");
-                // SafeMosaicProcessor 직접 사용
-                safeProcessor = new SafeMosaicProcessor(null, Config.GetSection("mosaic"));
-                Console.WriteLine("✅ 안전 프로세서 초기화 완료");
+                Console.WriteLine("3. MosaicProcessor 초기화 중...");
+                // MosaicProcessor 직접 사용 (전체 경로)
+                mosaicProcessor = new MosaicCensorSystem.Detection.MosaicProcessor(null, Config.GetSection("mosaic"));
+                
+                Console.WriteLine($"🔍 프로세서 타입: {mosaicProcessor.GetType().FullName}");
+                Console.WriteLine($"🔍 모델 로드 상태: {mosaicProcessor.IsModelLoaded()}");
+                Console.WriteLine($"🔍 가속 모드: {mosaicProcessor.GetAccelerationMode()}");
+                Console.WriteLine($"🔍 사용 가능한 클래스: [{string.Join(", ", mosaicProcessor.GetAvailableClasses())}]");
+                
+                Console.WriteLine("✅ MosaicProcessor 초기화 완료");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ 안전 프로세서 초기화 실패: {ex.Message}");
-                safeProcessor = null;
+                Console.WriteLine($"❌ MosaicProcessor 초기화 실패: {ex.Message}");
+                mosaicProcessor = null;
             }
 
             try
@@ -178,9 +185,9 @@ namespace MosaicCensorSystem
         {
             var titleLabel = new Label
             {
-                Text = "🔄 점진적 기능 복구 화면 검열 시스템 v6.0 (단계별 안전 복구)",
+                Text = "🤖 ONNX 가이드 기반 화면 검열 시스템 v7.0 (MosaicProcessor)",
                 Font = new Font("Arial", 12, FontStyle.Bold),
-                BackColor = Color.SkyBlue,
+                BackColor = Color.LightGreen,
                 BorderStyle = BorderStyle.Fixed3D,
                 Cursor = Cursors.Hand,
                 TextAlign = ContentAlignment.MiddleCenter,
@@ -192,9 +199,9 @@ namespace MosaicCensorSystem
             
             var scrollInfo = new Label
             {
-                Text = "⚙️ 점진적 복구: 캡처 성공 → 성능 향상 → 검열 기능 단계별 추가",
+                Text = "🚀 완전한 ONNX 가이드 기반 프로세서 - GPU 가속 + 트래킹 + 캐싱",
                 Font = new Font("Arial", 9),
-                ForeColor = Color.Blue,
+                ForeColor = Color.DarkGreen,
                 BackColor = Color.LightCyan,
                 TextAlign = ContentAlignment.MiddleCenter,
                 Height = 25,
@@ -245,7 +252,7 @@ namespace MosaicCensorSystem
             
             var dragInfo = new Label
             {
-                Text = "💡 하늘색 제목을 드래그해서 창을 이동하세요",
+                Text = "💡 초록색 제목을 드래그해서 창을 이동하세요",
                 Font = new Font("Arial", 9),
                 ForeColor = Color.Gray,
                 Location = new System.Drawing.Point(10, y),
@@ -256,7 +263,7 @@ namespace MosaicCensorSystem
             
             statusLabel = new Label
             {
-                Text = "⭕ 점진적 복구 모드 대기 중",
+                Text = "⭕ MosaicProcessor 대기 중",
                 Font = new Font("Arial", 12),
                 ForeColor = Color.Red,
                 Location = new System.Drawing.Point(10, y),
@@ -268,7 +275,7 @@ namespace MosaicCensorSystem
             // 기능 레벨 선택
             var featureLevelGroup = new GroupBox
             {
-                Text = "🔄 기능 레벨 선택 (단계별 복구)",
+                Text = "🚀 기능 레벨 선택 (ONNX 가이드 기반)",
                 Location = new System.Drawing.Point(10, y),
                 Size = new System.Drawing.Size(460, 100)
             };
@@ -289,20 +296,20 @@ namespace MosaicCensorSystem
             };
             featureLevelCombo.Items.AddRange(new string[]
             {
-                "레벨 1: 화면 캡처만 (현재 상태)",
+                "레벨 1: 화면 캡처만",
                 "레벨 2: 캡처 + 성능 향상 (고fps)",
                 "레벨 3: 캡처 + 객체 감지 (검열 없음)",
                 "레벨 4: 캡처 + 감지 + 모자이크 검열",
                 "레벨 5: 전체 기능 (감지 + 검열 + 트래킹)"
             });
-            featureLevelCombo.SelectedIndex = 0;
+            featureLevelCombo.SelectedIndex = 4; // 기본을 레벨 5로 설정
             featureLevelCombo.SelectedIndexChanged += OnFeatureLevelChanged;
             featureLevelGroup.Controls.Add(featureLevelCombo);
             
             var levelInfo = new Label
             {
-                Text = "💡 레벨을 점진적으로 올려가며 안정성을 확인하세요",
-                ForeColor = Color.Blue,
+                Text = "💡 MosaicProcessor는 모든 기능이 최적화되어 있습니다",
+                ForeColor = Color.DarkGreen,
                 Font = new Font("Arial", 9),
                 Location = new System.Drawing.Point(10, 55),
                 Size = new System.Drawing.Size(440, 35)
@@ -351,8 +358,7 @@ namespace MosaicCensorSystem
             enableDetectionCheckBox = new CheckBox
             {
                 Text = "🔍 객체 감지 활성화",
-                Checked = enableDetection,
-                Enabled = false,
+                Checked = true, // 기본적으로 활성화
                 Location = new System.Drawing.Point(10, 70),
                 AutoSize = true
             };
@@ -362,8 +368,7 @@ namespace MosaicCensorSystem
             enableCensoringCheckBox = new CheckBox
             {
                 Text = "🎨 검열 효과 활성화",
-                Checked = enableCensoring,
-                Enabled = false,
+                Checked = true, // 기본적으로 활성화
                 Location = new System.Drawing.Point(200, 70),
                 AutoSize = true
             };
@@ -415,30 +420,33 @@ namespace MosaicCensorSystem
             
             var targetsGroup = new GroupBox
             {
-                Text = "🎯 검열 대상 선택",
+                Text = "🎯 검열 대상 선택 (ONNX 가이드 기반)",
                 Location = new System.Drawing.Point(10, y),
-                Size = new System.Drawing.Size(460, 120)
+                Size = new System.Drawing.Size(460, 150)
             };
             
-            var safeTargets = new[]
+            // MosaicProcessor의 전체 클래스 목록 사용
+            var allTargets = new[]
             {
-                "얼굴", "눈", "손", "신발"
+                "얼굴", "가슴", "겨드랑이", "보지", "발",
+                "몸 전체", "자지", "팬티", "눈", "손",
+                "교미", "신발", "가슴_옷", "여성"
             };
             
-            var defaultTargets = new List<string> { "얼굴" };
+            var defaultTargets = new List<string> { "얼굴", "눈", "손" }; // 안전한 기본값
             
-            for (int i = 0; i < safeTargets.Length; i++)
+            for (int i = 0; i < allTargets.Length; i++)
             {
-                var target = safeTargets[i];
-                var row = i / 2;
-                var col = i % 2;
+                var target = allTargets[i];
+                var row = i / 3; // 3열로 배치
+                var col = i % 3;
                 
                 var checkbox = new CheckBox
                 {
                     Text = target,
                     Checked = defaultTargets.Contains(target),
-                    Location = new System.Drawing.Point(15 + col * 200, 30 + row * 30),
-                    Size = new System.Drawing.Size(180, 25),
+                    Location = new System.Drawing.Point(15 + col * 140, 30 + row * 25),
+                    Size = new System.Drawing.Size(130, 20),
                     AutoSize = false
                 };
                 
@@ -448,16 +456,16 @@ namespace MosaicCensorSystem
             
             var targetNote = new Label
             {
-                Text = "💡 안전한 타겟들로 시작합니다",
-                ForeColor = Color.Blue,
+                Text = "💡 ONNX 가이드의 14개 클래스 모두 지원",
+                ForeColor = Color.DarkGreen,
                 Font = new Font("Arial", 9),
-                Location = new System.Drawing.Point(15, 90),
+                Location = new System.Drawing.Point(15, 120),
                 AutoSize = true
             };
             targetsGroup.Controls.Add(targetNote);
             
             parent.Controls.Add(targetsGroup);
-            y += 130;
+            y += 160;
             
             var settingsGroup = new GroupBox
             {
@@ -504,7 +512,7 @@ namespace MosaicCensorSystem
             
             confidenceSlider = new TrackBar
             {
-                Minimum = 30,
+                Minimum = 10, // 0.1로 설정
                 Maximum = 90,
                 Value = (int)(currentConfidence * 100),
                 TickFrequency = 10,
@@ -535,7 +543,7 @@ namespace MosaicCensorSystem
             
             var buttonLabel = new Label
             {
-                Text = "🎮 점진적 복구 모드 컨트롤",
+                Text = "🎮 ONNX 가이드 기반 MosaicProcessor 컨트롤",
                 Font = new Font("Arial", 12, FontStyle.Bold),
                 BackColor = Color.LightGray,
                 Location = new System.Drawing.Point(10, 10),
@@ -546,14 +554,14 @@ namespace MosaicCensorSystem
             
             startButton = new Button
             {
-                Text = "🔄 점진적 복구 시작",
-                BackColor = Color.RoyalBlue,
+                Text = "🚀 시작",
+                BackColor = Color.DarkGreen,
                 ForeColor = Color.White,
                 Font = new Font("Arial", 10, FontStyle.Bold),
                 Size = new System.Drawing.Size(120, 50),
                 Location = new System.Drawing.Point(20, 40)
             };
-            startButton.Click += StartProgressive;
+            startButton.Click += StartProcessing;
             controlPanel.Controls.Add(startButton);
             
             stopButton = new Button
@@ -566,13 +574,13 @@ namespace MosaicCensorSystem
                 Location = new System.Drawing.Point(170, 40),
                 Enabled = false
             };
-            stopButton.Click += StopProgressive;
+            stopButton.Click += StopProcessing;
             controlPanel.Controls.Add(stopButton);
             
             testButton = new Button
             {
                 Text = "🔍 캡처 테스트",
-                BackColor = Color.Green,
+                BackColor = Color.Blue,
                 ForeColor = Color.White,
                 Font = new Font("Arial", 10, FontStyle.Bold),
                 Size = new System.Drawing.Size(120, 50),
@@ -586,7 +594,7 @@ namespace MosaicCensorSystem
             
             var logGroup = new GroupBox
             {
-                Text = "📝 점진적 복구 로그",
+                Text = "📝 MosaicProcessor 로그",
                 Location = new System.Drawing.Point(10, y),
                 Size = new System.Drawing.Size(460, 120)
             };
@@ -653,7 +661,7 @@ namespace MosaicCensorSystem
                     enableCensoringCheckBox.Enabled = true;
                     enableCensoringCheckBox.Checked = true;
                     fpsSlider.Maximum = 25;
-                    LogMessage("📋 레벨 5: 전체 기능 활성화");
+                    LogMessage("📋 레벨 5: 전체 기능 활성화 (트래킹 + 캐싱)");
                     break;
             }
             
@@ -686,10 +694,12 @@ namespace MosaicCensorSystem
             {
                 try
                 {
-                    CensorType newType = mosaicRadioButton.Checked ? CensorType.Mosaic : CensorType.Blur;
-                    safeProcessor?.SetCensorType(newType);
+                    MosaicCensorSystem.Detection.CensorType newType = mosaicRadioButton.Checked ? 
+                        MosaicCensorSystem.Detection.CensorType.Mosaic : 
+                        MosaicCensorSystem.Detection.CensorType.Blur;
+                    mosaicProcessor?.SetCensorType(newType);
                     
-                    string typeText = newType == CensorType.Mosaic ? "모자이크" : "블러";
+                    string typeText = newType == MosaicCensorSystem.Detection.CensorType.Mosaic ? "모자이크" : "블러";
                     censorTypeLabel.Text = $"현재: {typeText}";
                     
                     LogMessage($"🎨 검열 타입 변경: {typeText}");
@@ -705,7 +715,7 @@ namespace MosaicCensorSystem
         {
             currentStrength = strengthSlider.Value;
             strengthLabel.Text = currentStrength.ToString();
-            safeProcessor?.SetStrength(currentStrength);
+            mosaicProcessor?.SetStrength(currentStrength);
             LogMessage($"💪 검열 강도 변경: {currentStrength}");
         }
 
@@ -713,8 +723,8 @@ namespace MosaicCensorSystem
         {
             currentConfidence = confidenceSlider.Value / 100.0f;
             confidenceLabel.Text = currentConfidence.ToString("F1");
-            if (safeProcessor != null)
-                safeProcessor.ConfThreshold = currentConfidence;
+            if (mosaicProcessor != null)
+                mosaicProcessor.ConfThreshold = currentConfidence;
             LogMessage($"🔍 신뢰도 변경: {currentConfidence:F1}");
         }
 
@@ -728,7 +738,7 @@ namespace MosaicCensorSystem
                 {
                     if (isRunning)
                     {
-                        StopProgressive(null, null);
+                        StopProcessing(null, null);
                     }
                 }
             }
@@ -776,11 +786,28 @@ namespace MosaicCensorSystem
                     {
                         LogMessage($"✅ 캡처 성공! 크기: {testFrame.Width}x{testFrame.Height}");
                         
+                        // MosaicProcessor로 테스트 감지
+                        if (mosaicProcessor != null && mosaicProcessor.IsModelLoaded())
+                        {
+                            LogMessage("🔍 객체 감지 테스트 실행...");
+                            var detections = mosaicProcessor.DetectObjects(testFrame);
+                            LogMessage($"🎯 감지 결과: {detections.Count}개 객체");
+                            
+                            if (detections.Count > 0)
+                            {
+                                for (int i = 0; i < Math.Min(3, detections.Count); i++)
+                                {
+                                    var det = detections[i];
+                                    LogMessage($"  {i+1}. {det.ClassName} (신뢰도: {det.Confidence:F3})");
+                                }
+                            }
+                        }
+                        
                         string testPath = Path.Combine(Environment.CurrentDirectory, "capture_test.jpg");
                         testFrame.SaveImage(testPath);
                         LogMessage($"💾 테스트 이미지 저장됨: {testPath}");
                         
-                        MessageBox.Show($"캡처 테스트 성공!\n\n크기: {testFrame.Width}x{testFrame.Height}\n저장: {testPath}", 
+                        MessageBox.Show($"캡처 테스트 성공!\n\n크기: {testFrame.Width}x{testFrame.Height}\n감지: {(mosaicProcessor?.IsModelLoaded() == true ? "가능" : "불가능")}\n저장: {testPath}", 
                                       "테스트 성공", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                     else
@@ -801,166 +828,587 @@ namespace MosaicCensorSystem
             }
         }
 
-        private void StartProgressive(object sender, EventArgs e)
+// MosaicApp.cs의 StartProcessing 메서드만 크래시 방지 버전으로 교체
+
+private void StartProcessing(object sender, EventArgs e)
+{
+    try
+    {
+        Console.WriteLine("🚀 크래시 방지 MosaicProcessor StartProcessing 시작");
+        
+        // 전역 예외 핸들러 설정
+        AppDomain.CurrentDomain.UnhandledException += (s, ex) =>
         {
-            try
+            Console.WriteLine($"💥 처리되지 않은 예외: {ex.ExceptionObject}");
+            LogMessage($"💥 치명적 오류: {ex.ExceptionObject}");
+        };
+        
+        Application.ThreadException += (s, ex) =>
+        {
+            Console.WriteLine($"💥 스레드 예외: {ex.Exception}");
+            LogMessage($"💥 스레드 오류: {ex.Exception.Message}");
+        };
+        
+        lock (isRunningLock)
+        {
+            if (isRunning)
             {
-                Console.WriteLine("🔄 점진적 복구 모드 StartProgressive 시작");
-                
-                lock (isRunningLock)
-                {
-                    if (isRunning)
-                    {
-                        LogMessage("⚠️ 이미 실행 중");
-                        return;
-                    }
-                    
-                    if (isDisposing)
-                    {
-                        LogMessage("⚠️ 종료 중이므로 시작할 수 없음");
-                        return;
-                    }
-                }
-
-                // 선택된 기능 레벨 확인
-                int level = featureLevelCombo.SelectedIndex + 1;
-                string levelDescription = featureLevelCombo.SelectedItem.ToString();
-                
-                var selectedTargets = new List<string>();
-                foreach (var kvp in targetCheckBoxes)
-                {
-                    if (kvp.Value.Checked)
-                        selectedTargets.Add(kvp.Key);
-                }
-
-                if (selectedTargets.Count == 0)
-                    selectedTargets.Add("얼굴"); // 기본값
-
-                LogMessage($"🎯 선택된 타겟들: {string.Join(", ", selectedTargets)}");
-
-                var result = MessageBox.Show(
-                    $"점진적 복구 모드로 시작하시겠습니까?\n\n" +
-                    $"• {levelDescription}\n" +
-                    $"• 목표 FPS: {targetFPS}\n" +
-                    $"• 객체 감지: {(enableDetection ? "활성화" : "비활성화")}\n" +
-                    $"• 검열 효과: {(enableCensoring ? "활성화" : "비활성화")}\n" +
-                    $"• 타겟: {string.Join(", ", selectedTargets)}\n\n" +
-                    "계속하시겠습니까?",
-                    "점진적 복구 모드 시작 확인",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Question);
-                
-                if (result != DialogResult.Yes)
-                    return;
-                
-                // 컴포넌트 상태 확인
-                if (capturer == null)
-                {
-                    MessageBox.Show("화면 캡처 모듈이 초기화되지 않았습니다!", "오류",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-                
-                if (overlay == null)
-                {
-                    MessageBox.Show("오버레이가 초기화되지 않았습니다!", "오류",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-                
-                if (enableDetection && (safeProcessor == null || !safeProcessor.IsModelLoaded()))
-                {
-                    MessageBox.Show("객체 감지가 활성화되었지만 프로세서가 준비되지 않았습니다!\n\n" +
-                        "레벨을 낮추거나 프로그램을 다시 시작해주세요.", "오류",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-                
-                // 프로세서 설정
-                if (safeProcessor != null && enableDetection)
-                {
-                    safeProcessor.SetTargets(selectedTargets);
-                    safeProcessor.SetStrength(currentStrength);
-                    safeProcessor.ConfThreshold = currentConfidence;
-                    safeProcessor.SetCensorType(mosaicRadioButton.Checked ? CensorType.Mosaic : CensorType.Blur);
-                }
-                
-                lock (isRunningLock)
-                {
-                    isRunning = true;
-                }
-                
-                lock (statsLock)
-                {
-                    stats["start_time"] = DateTime.Now;
-                    stats["frames_processed"] = 0;
-                    stats["objects_detected"] = 0;
-                    stats["censor_applied"] = 0;
-                    stats["detection_time"] = 0.0;
-                    stats["fps"] = 0.0;
-                }
-                
-                statusLabel.Text = $"✅ 레벨 {level} 실행 중 ({targetFPS}fps)";
-                statusLabel.ForeColor = Color.Blue;
-                startButton.Enabled = false;
-                stopButton.Enabled = true;
-                featureLevelCombo.Enabled = false;
-                
-                // 오버레이 시작
-                try
-                {
-                    if (!overlay.Show())
-                    {
-                        LogMessage("❌ 풀스크린 오버레이 시작 실패");
-                        StopProgressive(null, null);
-                        return;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogMessage($"❌ 오버레이 시작 오류: {ex.Message}");
-                    StopProgressive(null, null);
-                    return;
-                }
-                
-                // 처리 스레드 시작
-                try
-                {
-                    processThread = new Thread(ProgressiveProcessingLoop)
-                    {
-                        Name = "ProgressiveProcessingThread",
-                        IsBackground = true,
-                        Priority = ThreadPriority.Normal
-                    };
-                    processThread.SetApartmentState(ApartmentState.MTA);
-                    processThread.Start();
-                    
-                    LogMessage($"🔄 점진적 복구 모드 시작! 레벨={level}, FPS={targetFPS}");
-                    LogMessage($"⚙️ 설정: 감지={enableDetection}, 검열={enableCensoring}, 타겟={string.Join(",", selectedTargets)}");
-                }
-                catch (Exception ex)
-                {
-                    LogMessage($"❌ 처리 스레드 생성 실패: {ex.Message}");
-                    StopProgressive(null, null);
-                    return;
-                }
-                
-                Console.WriteLine("🔄 점진적 복구 모드 StartProgressive 완료!");
+                LogMessage("⚠️ 이미 실행 중");
+                return;
             }
-            catch (Exception ex)
+            
+            if (isDisposing)
             {
-                Console.WriteLine($"💥 점진적 복구 모드 StartProgressive 오류: {ex.Message}");
-                LogMessage($"❌ 시작 오류: {ex.Message}");
-                
-                try
-                {
-                    StopProgressive(null, null);
-                }
-                catch { }
+                LogMessage("⚠️ 종료 중이므로 시작할 수 없음");
+                return;
             }
         }
 
-        private void StopProgressive(object sender, EventArgs e)
+        // 기본 상태 체크 (강화)
+        Console.WriteLine("🔍 1단계: 기본 컴포넌트 상태 체크");
+        
+        if (capturer == null)
+        {
+            var errorMsg = "화면 캡처 모듈이 초기화되지 않았습니다!";
+            Console.WriteLine($"❌ {errorMsg}");
+            MessageBox.Show(errorMsg, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+        Console.WriteLine("✅ 캡처러 상태 OK");
+        
+        if (overlay == null)
+        {
+            var errorMsg = "오버레이가 초기화되지 않았습니다!";
+            Console.WriteLine($"❌ {errorMsg}");
+            MessageBox.Show(errorMsg, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+        Console.WriteLine("✅ 오버레이 상태 OK");
+
+        // 선택된 기능 레벨 확인
+        int level = featureLevelCombo.SelectedIndex + 1;
+        string levelDescription = featureLevelCombo.SelectedItem.ToString();
+        
+        Console.WriteLine($"🔍 2단계: 기능 레벨 체크 - 레벨 {level}");
+        
+        var selectedTargets = new List<string>();
+        foreach (var kvp in targetCheckBoxes)
+        {
+            if (kvp.Value.Checked)
+                selectedTargets.Add(kvp.Key);
+        }
+
+        if (selectedTargets.Count == 0)
+            selectedTargets.Add("얼굴"); // 기본값
+
+        Console.WriteLine($"🎯 선택된 타겟들: {string.Join(", ", selectedTargets)}");
+
+        // MosaicProcessor 상태 체크 (강화)
+        Console.WriteLine("🔍 3단계: MosaicProcessor 상태 체크");
+        
+        if (mosaicProcessor == null)
+        {
+            var errorMsg = "MosaicProcessor가 초기화되지 않았습니다!";
+            Console.WriteLine($"❌ {errorMsg}");
+            MessageBox.Show(errorMsg, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+        Console.WriteLine("✅ MosaicProcessor 인스턴스 OK");
+        
+        // 모델 로드 상태 체크
+        bool modelLoaded = false;
+        try
+        {
+            modelLoaded = mosaicProcessor.IsModelLoaded();
+            Console.WriteLine($"✅ 모델 로드 상태: {modelLoaded}");
+        }
+        catch (Exception modelEx)
+        {
+            Console.WriteLine($"❌ 모델 상태 체크 오류: {modelEx.Message}");
+            modelLoaded = false;
+        }
+        
+        if (enableDetection && !modelLoaded)
+        {
+            var errorMsg = "객체 감지가 활성화되었지만 모델이 로드되지 않았습니다!\n\n" +
+                "옵션:\n" +
+                "1. 레벨을 1-2로 낮춰서 캡처만 테스트\n" +
+                "2. best.onnx 파일이 Resources 폴더에 있는지 확인\n" +
+                "3. 프로그램을 다시 시작";
+            
+            Console.WriteLine($"❌ {errorMsg}");
+            MessageBox.Show(errorMsg, "모델 오류", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        // 사용자 확인 (간소화)
+        Console.WriteLine("🔍 4단계: 사용자 확인");
+        
+        var result = MessageBox.Show(
+            $"안전 모드로 시작하시겠습니까?\n\n" +
+            $"• {levelDescription}\n" +
+            $"• 객체 감지: {(enableDetection ? "활성화" : "비활성화")}\n" +
+            $"• 검열 효과: {(enableCensoring ? "활성화" : "비활성화")}\n" +
+            $"• 모델 상태: {(modelLoaded ? "로드됨" : "로드 안됨")}\n\n" +
+            "계속하시겠습니까?",
+            "안전 모드 시작 확인",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question);
+        
+        if (result != DialogResult.Yes)
+        {
+            Console.WriteLine("🛑 사용자가 취소함");
+            return;
+        }
+        
+        Console.WriteLine("🔍 5단계: 프로세서 설정 적용");
+        
+        // 프로세서 설정 (안전하게)
+        if (mosaicProcessor != null && enableDetection && modelLoaded)
+        {
+            try
+            {
+                Console.WriteLine("⚙️ 타겟 설정 중...");
+                mosaicProcessor.SetTargets(selectedTargets);
+                
+                Console.WriteLine("⚙️ 강도 설정 중...");
+                mosaicProcessor.SetStrength(currentStrength);
+                
+                Console.WriteLine("⚙️ 신뢰도 설정 중...");
+                mosaicProcessor.ConfThreshold = currentConfidence;
+                
+                Console.WriteLine("⚙️ 검열 타입 설정 중...");
+                mosaicProcessor.SetCensorType(mosaicRadioButton.Checked ? 
+                    MosaicCensorSystem.Detection.CensorType.Mosaic : 
+                    MosaicCensorSystem.Detection.CensorType.Blur);
+                
+                Console.WriteLine("✅ 프로세서 설정 완료");
+            }
+            catch (Exception settingEx)
+            {
+                Console.WriteLine($"❌ 프로세서 설정 오류: {settingEx.Message}");
+                MessageBox.Show($"프로세서 설정 오류: {settingEx.Message}", "설정 오류", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+        }
+        
+        Console.WriteLine("🔍 6단계: 실행 상태 설정");
+        
+        // 실행 상태 설정
+        lock (isRunningLock)
+        {
+            isRunning = true;
+        }
+        
+        lock (statsLock)
+        {
+            stats["start_time"] = DateTime.Now;
+            stats["frames_processed"] = 0;
+            stats["objects_detected"] = 0;
+            stats["censor_applied"] = 0;
+            stats["detection_time"] = 0.0;
+            stats["fps"] = 0.0;
+        }
+        
+        // UI 상태 업데이트
+        try
+        {
+            statusLabel.Text = $"✅ 레벨 {level} 준비 중...";
+            statusLabel.ForeColor = Color.Orange;
+            startButton.Enabled = false;
+            stopButton.Enabled = true;
+            featureLevelCombo.Enabled = false;
+            
+            Console.WriteLine("✅ UI 상태 업데이트 완료");
+        }
+        catch (Exception uiEx)
+        {
+            Console.WriteLine($"❌ UI 업데이트 오류: {uiEx.Message}");
+        }
+        
+        // 캡처 테스트 먼저 실행
+        Console.WriteLine("🔍 7단계: 캡처 기능 테스트");
+        
+        try
+        {
+            Mat testFrame = capturer.GetFrame();
+            if (testFrame == null || testFrame.Empty())
+            {
+                throw new Exception("캡처 테스트 실패 - null 또는 빈 프레임");
+            }
+            
+            Console.WriteLine($"✅ 캡처 테스트 성공: {testFrame.Width}x{testFrame.Height}");
+            testFrame.Dispose();
+        }
+        catch (Exception captureTestEx)
+        {
+            Console.WriteLine($"❌ 캡처 테스트 실패: {captureTestEx.Message}");
+            MessageBox.Show($"캡처 테스트 실패: {captureTestEx.Message}\n\n" +
+                "화면 캡처에 문제가 있습니다. 프로그램을 다시 시작해주세요.", 
+                "캡처 오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            
+            StopProcessing(null, null);
+            return;
+        }
+        
+        // 오버레이 시작 (안전하게)
+        Console.WriteLine("🔍 8단계: 오버레이 시작");
+        
+        try
+        {
+            Console.WriteLine("🖼️ 오버레이 Show() 호출...");
+            bool overlayResult = overlay.Show();
+            
+            if (!overlayResult)
+            {
+                throw new Exception("overlay.Show() 반환값이 false");
+            }
+            
+            Console.WriteLine("✅ 오버레이 시작 성공");
+            
+            // 오버레이 상태 확인
+            System.Threading.Thread.Sleep(500); // 0.5초 대기
+            
+            if (!overlay.IsWindowVisible())
+            {
+                throw new Exception("오버레이 창이 보이지 않음");
+            }
+            
+            Console.WriteLine("✅ 오버레이 가시성 확인 완료");
+        }
+        catch (Exception overlayEx)
+        {
+            Console.WriteLine($"❌ 오버레이 시작 실패: {overlayEx.Message}");
+            MessageBox.Show($"오버레이 시작 실패: {overlayEx.Message}\n\n" +
+                "화면 오버레이에 문제가 있습니다.", "오버레이 오류", 
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            
+            StopProcessing(null, null);
+            return;
+        }
+        
+        // 처리 스레드 시작 (매우 안전하게)
+        Console.WriteLine("🔍 9단계: 처리 스레드 시작");
+        
+        try
+        {
+            Console.WriteLine("🧵 스레드 생성 중...");
+            
+            processThread = new Thread(() => {
+                try
+                {
+                    Console.WriteLine("🧵 ProcessingLoop 스레드 시작됨");
+                    SafeProcessingLoop();
+                }
+                catch (Exception threadEx)
+                {
+                    Console.WriteLine($"💥 ProcessingLoop 스레드 예외: {threadEx}");
+                    LogMessage($"💥 스레드 치명적 오류: {threadEx.Message}");
+                }
+                finally
+                {
+                    Console.WriteLine("🧵 ProcessingLoop 스레드 종료됨");
+                }
+            })
+            {
+                Name = "SafeMosaicProcessorThread",
+                IsBackground = true,
+                Priority = ThreadPriority.Normal
+            };
+            
+            processThread.SetApartmentState(ApartmentState.MTA);
+            
+            Console.WriteLine("🧵 스레드 시작...");
+            processThread.Start();
+            
+            // 스레드 시작 확인
+            System.Threading.Thread.Sleep(100);
+            
+            if (!processThread.IsAlive)
+            {
+                throw new Exception("스레드가 시작되지 않았음");
+            }
+            
+            Console.WriteLine("✅ 처리 스레드 시작 성공");
+        }
+        catch (Exception threadEx)
+        {
+            Console.WriteLine($"❌ 처리 스레드 시작 실패: {threadEx.Message}");
+            MessageBox.Show($"처리 스레드 시작 실패: {threadEx.Message}", "스레드 오류", 
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            
+            StopProcessing(null, null);
+            return;
+        }
+        
+        // 최종 UI 업데이트
+        try
+        {
+            statusLabel.Text = $"✅ 레벨 {level} 실행 중 (안전 모드)";
+            statusLabel.ForeColor = Color.DarkGreen;
+            Console.WriteLine("✅ 최종 UI 업데이트 완료");
+        }
+        catch (Exception finalUiEx)
+        {
+            Console.WriteLine($"❌ 최종 UI 업데이트 오류: {finalUiEx.Message}");
+        }
+        
+        LogMessage($"🚀 안전 모드 시작 완료! 레벨={level}, 감지={enableDetection}, 검열={enableCensoring}");
+        Console.WriteLine("🎉 StartProcessing 성공적으로 완료!");
+        
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"💥 StartProcessing 최상위 예외: {ex}");
+        LogMessage($"💥 시작 치명적 오류: {ex.Message}");
+        
+        MessageBox.Show($"시작 중 치명적 오류가 발생했습니다:\n\n{ex.Message}\n\n" +
+            "스택 트레이스:\n{ex.StackTrace}", "치명적 오류", 
+            MessageBoxButtons.OK, MessageBoxIcon.Error);
+        
+        try
+        {
+            StopProcessing(null, null);
+        }
+        catch (Exception stopEx)
+        {
+            Console.WriteLine($"💥 정리 중에도 오류: {stopEx.Message}");
+        }
+    }
+}
+
+// 새로운 안전한 처리 루프
+private void SafeProcessingLoop()
+{
+    Console.WriteLine("🛡️ 안전한 ProcessingLoop 시작");
+    int frameCount = 0;
+    DateTime lastLogTime = DateTime.Now;
+    var frameTimes = new List<double>();
+    
+    try
+    {
+        while (true)
+        {
+            var frameStartTime = DateTime.Now;
+            
+            try
+            {
+                // 실행 상태 체크
+                bool shouldRun;
+                lock (isRunningLock)
+                {
+                    shouldRun = isRunning && !isDisposing;
+                }
+                
+                if (!shouldRun)
+                {
+                    Console.WriteLine("🛑 안전한 ProcessingLoop 정상 종료");
+                    break;
+                }
+                
+                frameCount++;
+                
+                // 간단한 캡처만 (크래시 방지)
+                Mat capturedFrame = null;
+                Mat processedFrame = null;
+                
+                try
+                {
+                    // 캡처 시도
+                    if (capturer != null)
+                    {
+                        capturedFrame = capturer.GetFrame();
+                        
+                        if (capturedFrame != null && !capturedFrame.Empty())
+                        {
+                            processedFrame = capturedFrame.Clone();
+                            
+                            // 10프레임마다 로그
+                            if (frameCount % 10 == 0)
+                            {
+                                Console.WriteLine($"📸 안전 모드 프레임 #{frameCount}: {capturedFrame.Width}x{capturedFrame.Height}");
+                            }
+                        }
+                        else
+                        {
+                            if (frameCount % 30 == 0)
+                            {
+                                Console.WriteLine($"⚠️ 프레임 #{frameCount}: 캡처 실패");
+                            }
+                            Thread.Sleep(50);
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("❌ capturer가 null");
+                        Thread.Sleep(100);
+                        continue;
+                    }
+                    
+                    // 객체 감지 (매우 안전하게)
+                    if (enableDetection && mosaicProcessor != null)
+                    {
+                        try
+                        {
+                            if (frameCount % 10 == 0)
+                            {
+                                Console.WriteLine($"🔍 프레임 #{frameCount}: 안전 모드 객체 감지 시도");
+                            }
+                            
+                            var detections = mosaicProcessor.DetectObjects(capturedFrame);
+                            
+                            if (frameCount % 10 == 0 || (detections != null && detections.Count > 0))
+                            {
+                                Console.WriteLine($"✅ 프레임 #{frameCount}: 감지 완료 - {detections?.Count ?? 0}개");
+                            }
+                            
+                            // 검열 적용 (안전하게)
+                            if (enableCensoring && detections != null && detections.Count > 0)
+                            {
+                                try
+                                {
+                                    int applied = 0;
+                                    foreach (var detection in detections.Take(3)) // 최대 3개만
+                                    {
+                                        mosaicProcessor.ApplySingleCensorOptimized(processedFrame, detection);
+                                        applied++;
+                                    }
+                                    
+                                    if (applied > 0 && frameCount % 10 == 0)
+                                    {
+                                        Console.WriteLine($"🎨 프레임 #{frameCount}: 검열 적용 - {applied}개");
+                                    }
+                                }
+                                catch (Exception censorEx)
+                                {
+                                    if (frameCount % 30 == 0)
+                                    {
+                                        Console.WriteLine($"⚠️ 검열 오류 (무시됨): {censorEx.Message}");
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception detectEx)
+                        {
+                            if (frameCount % 30 == 0)
+                            {
+                                Console.WriteLine($"⚠️ 감지 오류 (무시됨): {detectEx.Message}");
+                            }
+                        }
+                    }
+                    
+                    // 오버레이 업데이트 (안전하게)
+                    try
+                    {
+                        if (overlay != null && overlay.IsWindowVisible() && processedFrame != null)
+                        {
+                            overlay.UpdateFrame(processedFrame);
+                        }
+                    }
+                    catch (Exception overlayEx)
+                    {
+                        if (frameCount % 30 == 0)
+                        {
+                            Console.WriteLine($"⚠️ 오버레이 오류 (무시됨): {overlayEx.Message}");
+                        }
+                    }
+                    
+                }
+                catch (Exception frameEx)
+                {
+                    Console.WriteLine($"⚠️ 프레임 #{frameCount} 처리 오류 (무시됨): {frameEx.Message}");
+                    Thread.Sleep(100);
+                }
+                finally
+                {
+                    // 안전한 리소스 정리
+                    try
+                    {
+                        capturedFrame?.Dispose();
+                        processedFrame?.Dispose();
+                    }
+                    catch { }
+                }
+                
+                // 프레임 시간 기록
+                var frameTime = (DateTime.Now - frameStartTime).TotalMilliseconds;
+                frameTimes.Add(frameTime);
+                if (frameTimes.Count > 50)
+                    frameTimes.RemoveRange(0, 25);
+                
+                // 주기적 상태 로그 (30초마다)
+                var now = DateTime.Now;
+                if ((now - lastLogTime).TotalSeconds >= 30)
+                {
+                    lastLogTime = now;
+                    
+                    var avgFrameTime = frameTimes.Count > 0 ? frameTimes.Average() : 0;
+                    Console.WriteLine($"🛡️ 안전 모드 상태: 프레임 {frameCount}, 평균 시간 {avgFrameTime:F1}ms");
+                    LogMessage($"🛡️ 안전 모드 실행 중: {frameCount}프레임 처리됨");
+                }
+                
+                // 오버레이 상태 체크
+                try
+                {
+                    if (overlay != null && !overlay.IsWindowVisible())
+                    {
+                        Console.WriteLine("🛑 오버레이 창 닫힘 - 루프 종료");
+                        lock (isRunningLock)
+                        {
+                            isRunning = false;
+                        }
+                        break;
+                    }
+                }
+                catch { }
+                
+                // 적당한 대기 (FPS 조절)
+                Thread.Sleep(Math.Max(1, 1000 / targetFPS));
+                
+            }
+            catch (Exception loopEx)
+            {
+                Console.WriteLine($"⚠️ 루프 반복 오류 (복구 시도): {loopEx.Message}");
+                Thread.Sleep(1000); // 1초 대기 후 복구 시도
+            }
+        }
+    }
+    catch (Exception fatalEx)
+    {
+        Console.WriteLine($"💥 안전한 ProcessingLoop 치명적 오류: {fatalEx}");
+        LogMessage($"💥 안전 모드 치명적 오류: {fatalEx.Message}");
+    }
+    finally
+    {
+        Console.WriteLine("🧹 안전한 ProcessingLoop 정리 시작");
+        
+        try
+        {
+            if (!isDisposing && Root?.IsHandleCreated == true && !Root.IsDisposed)
+            {
+                Root.BeginInvoke(new Action(() => {
+                    try
+                    {
+                        StopProcessing(null, null);
+                    }
+                    catch (Exception stopEx)
+                    {
+                        Console.WriteLine($"⚠️ 정리 중 오류: {stopEx.Message}");
+                    }
+                }));
+            }
+        }
+        catch (Exception cleanupEx)
+        {
+            Console.WriteLine($"⚠️ 최종 정리 오류: {cleanupEx.Message}");
+        }
+        
+        Console.WriteLine("🏁 안전한 ProcessingLoop 완전 종료");
+    }
+}
+        private void StopProcessing(object sender, EventArgs e)
         {
             try
             {
@@ -972,7 +1420,7 @@ namespace MosaicCensorSystem
                     isRunning = false;
                 }
                 
-                LogMessage("🛑 점진적 복구 모드 중지 중...");
+                LogMessage("🛑 MosaicProcessor 중지 중...");
                 
                 try
                 {
@@ -998,7 +1446,7 @@ namespace MosaicCensorSystem
                             {
                                 if (!isDisposing && !Root.IsDisposed)
                                 {
-                                    statusLabel.Text = "⭕ 점진적 복구 모드 대기 중";
+                                    statusLabel.Text = "⭕ MosaicProcessor 대기 중";
                                     statusLabel.ForeColor = Color.Red;
                                     startButton.Enabled = true;
                                     stopButton.Enabled = false;
@@ -1010,28 +1458,30 @@ namespace MosaicCensorSystem
                     }
                 }
                 
-                LogMessage("✅ 점진적 복구 모드 중지됨");
+                LogMessage("✅ MosaicProcessor 중지됨");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ StopProgressive 오류: {ex.Message}");
+                Console.WriteLine($"❌ StopProcessing 오류: {ex.Message}");
             }
         }
 
-        // 7. 메인 처리 루프
-        private void ProgressiveProcessingLoop()
+        // 7. 메인 처리 루프 (MosaicProcessor 최적화 버전)
+        private void ProcessingLoop()
         {
-            LogMessage("🔄 점진적 복구 ProcessingLoop 시작");
+            LogMessage("🚀 MosaicProcessor ProcessingLoop 시작");
             int frameCount = 0;
             DateTime lastLogTime = DateTime.Now;
             var frameTimes = new List<double>();
             var detectionTimes = new List<double>();
             
-            int frameskip = Math.Max(1, 60 / targetFPS); // 목표 FPS에 따른 프레임 스킵
+            int frameskip = Math.Max(1, 60 / targetFPS);
             
             try
             {
-                LogMessage($"🔄 처리 루프 진입 - 목표 FPS: {targetFPS}, 프레임 스킵: {frameskip}");
+                LogMessage($"🚀 MosaicProcessor 처리 루프 진입 - 목표 FPS: {targetFPS}, 프레임 스킵: {frameskip}");
+                LogMessage($"🚀 초기 설정: 감지={enableDetection}, 검열={enableCensoring}");
+                LogMessage($"🚀 프로세서 상태: {mosaicProcessor?.GetType().Name}, 모델 로드={mosaicProcessor?.IsModelLoaded()}");
                 
                 while (true)
                 {
@@ -1039,7 +1489,6 @@ namespace MosaicCensorSystem
                     
                     try
                     {
-                        // 실행 상태 체크
                         bool shouldRun;
                         lock (isRunningLock)
                         {
@@ -1048,18 +1497,18 @@ namespace MosaicCensorSystem
                         
                         if (!shouldRun)
                         {
-                            LogMessage("🛑 점진적 복구 ProcessingLoop 정상 종료");
+                            LogMessage("🛑 MosaicProcessor ProcessingLoop 정상 종료");
                             break;
                         }
                         
                         frameCount++;
+                        
                         Mat capturedFrame = null;
                         Mat processedFrame = null;
                         
                         try
                         {
-                            // STEP 1: 화면 캡처 (모든 레벨에서 수행)
-                            if (frameCount % frameskip == 0) // 프레임 스킵 적용
+                            if (frameCount % frameskip == 0)
                             {
                                 try
                                 {
@@ -1070,6 +1519,11 @@ namespace MosaicCensorSystem
                                         if (capturedFrame != null && !capturedFrame.Empty())
                                         {
                                             processedFrame = capturedFrame.Clone();
+                                            
+                                            if (frameCount <= 5 || frameCount % 60 == 0)
+                                            {
+                                                LogMessage($"📸 프레임 #{frameCount}: 캡처 성공 {capturedFrame.Width}x{capturedFrame.Height}");
+                                            }
                                         }
                                     }
                                 }
@@ -1086,39 +1540,63 @@ namespace MosaicCensorSystem
                                     continue;
                                 }
                                 
-                                // STEP 2: 객체 감지 (레벨 3+ 에서만)
+                                // STEP 2: 객체 감지
                                 List<MosaicCensorSystem.Detection.Detection> detections = null;
-                                if (enableDetection && safeProcessor != null)
+                                if (enableDetection && mosaicProcessor != null && mosaicProcessor.IsModelLoaded())
                                 {
                                     var detectionStart = DateTime.Now;
                                     try
                                     {
-                                        detections = safeProcessor.DetectObjects(capturedFrame);
+                                        // MosaicProcessor의 DetectObjects 호출
+                                        if (frameCount <= 10 || frameCount % 60 == 0)
+                                        {
+                                            LogMessage($"🔍 프레임 #{frameCount}: MosaicProcessor.DetectObjects 호출");
+                                        }
+                                        
+                                        detections = mosaicProcessor.DetectObjects(capturedFrame);
                                         
                                         var detectionTime = (DateTime.Now - detectionStart).TotalMilliseconds;
                                         detectionTimes.Add(detectionTime);
                                         if (detectionTimes.Count > 50)
                                             detectionTimes.RemoveRange(0, 25);
+                                        
+                                        if (frameCount <= 10 || frameCount % 60 == 0 || detections.Count > 0)
+                                        {
+                                            LogMessage($"✅ 프레임 #{frameCount}: MosaicProcessor 감지 완료 - {detections?.Count ?? 0}개 객체, {detectionTime:F1}ms");
+                                        }
+                                        
+                                        // 감지 결과 상세 로그
+                                        if (detections != null && detections.Count > 0)
+                                        {
+                                            if (frameCount <= 5 || frameCount % 30 == 0)
+                                            {
+                                                LogMessage($"🎯 감지된 객체들:");
+                                                for (int i = 0; i < Math.Min(detections.Count, 3); i++)
+                                                {
+                                                    var det = detections[i];
+                                                    LogMessage($"  - {det.ClassName} (신뢰도: {det.Confidence:F3}, 크기: {det.Width}x{det.Height})");
+                                                }
+                                            }
+                                        }
                                     }
                                     catch (Exception detectEx)
                                     {
-                                        LogMessage($"❌ 감지 오류: {detectEx.Message}");
+                                        LogMessage($"❌ MosaicProcessor 감지 오류: {detectEx.Message}");
                                     }
                                 }
                                 
-                                // STEP 3: 검열 효과 적용 (레벨 4+ 에서만)
+                                // STEP 3: 검열 효과 적용
                                 if (enableCensoring && detections != null && detections.Count > 0)
                                 {
                                     try
                                     {
                                         int appliedCount = 0;
                                         
-                                        // 최대 3개만 처리 (성능 고려)
-                                        foreach (var detection in detections.Take(3))
+                                        foreach (var detection in detections.Take(5)) // 최대 5개 처리
                                         {
-                                            if (safeProcessor != null)
+                                            if (mosaicProcessor != null)
                                             {
-                                                safeProcessor.ApplySingleCensorOptimized(processedFrame, detection);
+                                                mosaicProcessor.ApplySingleCensorOptimized(processedFrame, detection);
                                                 appliedCount++;
                                             }
                                         }
@@ -1130,6 +1608,11 @@ namespace MosaicCensorSystem
                                                 stats["censor_applied"] = (int)stats["censor_applied"] + appliedCount;
                                                 stats["objects_detected"] = (int)stats["objects_detected"] + detections.Count;
                                             }
+                                            
+                                            if (frameCount <= 10 || frameCount % 60 == 0)
+                                            {
+                                                LogMessage($"🎨 프레임 #{frameCount}: 검열 완료 - {appliedCount}개 적용");
+                                            }
                                         }
                                     }
                                     catch (Exception censorEx)
@@ -1138,7 +1621,7 @@ namespace MosaicCensorSystem
                                     }
                                 }
                                 
-                                // STEP 4: 오버레이 업데이트 (모든 레벨에서 수행)
+                                // STEP 4: 오버레이 업데이트
                                 try
                                 {
                                     if (overlay != null && overlay.IsWindowVisible())
@@ -1164,9 +1647,9 @@ namespace MosaicCensorSystem
                             if (frameTimes.Count > 100)
                                 frameTimes.RemoveRange(0, 50);
                             
-                            // 로그 출력 (30초마다)
+                            // 성능 로그 출력 (20초마다)
                             var now = DateTime.Now;
-                            if ((now - lastLogTime).TotalSeconds >= 30)
+                            if ((now - lastLogTime).TotalSeconds >= 20)
                             {
                                 lastLogTime = now;
                                 
@@ -1182,8 +1665,15 @@ namespace MosaicCensorSystem
                                         stats["fps"] = actualFps;
                                         stats["detection_time"] = avgDetectionTime;
                                         
-                                        LogMessage($"🔄 성능: {actualFps:F1}fps (목표:{targetFPS}), 프레임:{avgFrameTime:F1}ms, 감지:{avgDetectionTime:F1}ms");
+                                        // MosaicProcessor 성능 통계
+                                        var perfStats = mosaicProcessor?.GetPerformanceStats();
+                                        
+                                        LogMessage($"🚀 MosaicProcessor 성능: {actualFps:F1}fps (목표:{targetFPS}), 프레임:{avgFrameTime:F1}ms, 감지:{avgDetectionTime:F1}ms");
                                         LogMessage($"📊 통계: 프레임:{frameCount}, 감지:{stats["objects_detected"]}, 검열:{stats["censor_applied"]}");
+                                        if (perfStats != null)
+                                        {
+                                            LogMessage($"🎯 캐시: 히트={perfStats.CacheHits}, 미스={perfStats.CacheMisses}, 트래킹={perfStats.TrackedObjects}");
+                                        }
                                     }
                                 }
                             }
@@ -1215,7 +1705,6 @@ namespace MosaicCensorSystem
                         }
                         finally
                         {
-                            // 안전한 리소스 정리
                             try
                             {
                                 capturedFrame?.Dispose();
@@ -1224,8 +1713,8 @@ namespace MosaicCensorSystem
                             catch { }
                         }
                         
-                        // 강제 GC (200프레임마다)
-                        if (frameCount % 200 == 0)
+                        // 강제 GC (300프레임마다)
+                        if (frameCount % 300 == 0)
                         {
                             try
                             {
@@ -1245,29 +1734,29 @@ namespace MosaicCensorSystem
             }
             catch (Exception fatalEx)
             {
-                LogMessage($"💥 점진적 복구 ProcessingLoop 치명적 오류: {fatalEx.Message}");
+                LogMessage($"💥 MosaicProcessor ProcessingLoop 치명적 오류: {fatalEx.Message}");
                 
                 try
                 {
-                    File.AppendAllText("progressive_error.log", 
-                        $"{DateTime.Now}: PROGRESSIVE FATAL - {fatalEx}\n================\n");
+                    File.AppendAllText("mosaic_processor_error.log", 
+                        $"{DateTime.Now}: MOSAIC PROCESSOR FATAL - {fatalEx}\n================\n");
                 }
                 catch { }
             }
             finally
             {
-                LogMessage("🧹 점진적 복구 ProcessingLoop 정리");
+                LogMessage("🧹 MosaicProcessor ProcessingLoop 정리");
                 
                 try
                 {
                     if (!isDisposing && Root?.IsHandleCreated == true && !Root.IsDisposed)
                     {
-                        Root.BeginInvoke(new Action(() => StopProgressive(null, null)));
+                        Root.BeginInvoke(new Action(() => StopProcessing(null, null)));
                     }
                 }
                 catch { }
                 
-                LogMessage("🏁 점진적 복구 ProcessingLoop 완전 종료");
+                LogMessage("🏁 MosaicProcessor ProcessingLoop 완전 종료");
             }
         }
 
@@ -1313,7 +1802,7 @@ namespace MosaicCensorSystem
 
         private void Cleanup()
         {
-            Console.WriteLine("🧹 점진적 복구 모드 리소스 정리 중...");
+            Console.WriteLine("🧹 MosaicProcessor 기반 리소스 정리 중...");
             
             try
             {
@@ -1349,11 +1838,11 @@ namespace MosaicCensorSystem
                 
                 try
                 {
-                    safeProcessor?.Dispose();
+                    mosaicProcessor?.Dispose();
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"❌ 프로세서 정리 오류: {ex.Message}");
+                    Console.WriteLine($"❌ MosaicProcessor 정리 오류: {ex.Message}");
                 }
                 
                 try
@@ -1364,7 +1853,7 @@ namespace MosaicCensorSystem
                 }
                 catch { }
                 
-                Console.WriteLine("✅ 점진적 복구 모드 리소스 정리 완료");
+                Console.WriteLine("✅ MosaicProcessor 기반 리소스 정리 완료");
             }
             catch (Exception ex)
             {

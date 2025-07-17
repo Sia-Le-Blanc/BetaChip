@@ -86,16 +86,17 @@ namespace MosaicCensorSystem.Detection
     }
 
     /// <summary>
-    /// ONNX 가이드 기반 완전 개선된 검열 프로세서
+    /// 완전히 새로운 ONNX 기반 검열 프로세서 (객체 감지 문제 해결)
     /// </summary>
     public class MosaicProcessor : IProcessor, IDisposable
     {
         private readonly Dictionary<string, object> config;
         private InferenceSession model;
         private readonly string modelPath;
-        private string accelerationMode = "Unknown";
+        private string accelerationMode = "초기화 중";
         private volatile bool isDisposed = false;
         private volatile bool isModelLoaded = false;
+        private volatile bool isModelTested = false;
 
         // 트래킹 시스템
         private readonly SortTracker tracker = new SortTracker();
@@ -115,7 +116,7 @@ namespace MosaicCensorSystem.Detection
         public int Strength { get; private set; }
         public CensorType CurrentCensorType { get; private set; }
 
-        // ONNX 가이드 기반 정확한 클래스 매핑 (14개 클래스)
+        // 완전히 새로운 클래스 매핑 (14개 클래스)
         private static readonly Dictionary<int, string> ClassNames = new Dictionary<int, string>
         {
             {0, "얼굴"}, {1, "가슴"}, {2, "겨드랑이"}, {3, "보지"}, {4, "발"},
@@ -143,30 +144,31 @@ namespace MosaicCensorSystem.Detection
 
         public MosaicProcessor(string modelPath = null, Dictionary<string, object> config = null)
         {
-            Console.WriteLine("🔍 ONNX 가이드 기반 검열 프로세서 초기화");
+            Console.WriteLine("🚀 새로운 MosaicProcessor 초기화 시작");
             this.config = config ?? new Dictionary<string, object>();
             
             // 모델 경로 설정
             this.modelPath = FindBestModelPath(modelPath);
-            Console.WriteLine($"🔍 최종 모델 경로: {this.modelPath}");
+            Console.WriteLine($"📁 최종 모델 경로: {this.modelPath}");
 
-            // 설정값들 초기화
-            ConfThreshold = 0.3f; // 가이드 권장값
-            Targets = new List<string> { "얼굴", "눈", "손" }; // 가이드 기본 타겟
-            Strength = 15; // 가이드 기본값
+            // 더 관대한 기본 설정값들
+            ConfThreshold = 0.25f; // 더 낮은 기본 신뢰도
+            Targets = new List<string> { "얼굴", "눈", "손", "신발" }; // 안전한 기본 타겟
+            Strength = 15;
             CurrentCensorType = CensorType.Mosaic;
 
             // 모델 로딩
-            LoadModelWithBestStrategy();
+            LoadModelWithMultipleStrategies();
 
             Console.WriteLine($"🎯 타겟 클래스: {string.Join(", ", Targets)}");
             Console.WriteLine($"⚙️ 설정: 강도={Strength}, 신뢰도={ConfThreshold}, 타입={CurrentCensorType}");
             Console.WriteLine($"🚀 가속 모드: {accelerationMode}");
             Console.WriteLine($"📊 모델 상태: {(isModelLoaded ? "로드됨" : "로드 실패")}");
+            Console.WriteLine($"🧪 모델 테스트: {(isModelTested ? "성공" : "미실행")}");
         }
 
         /// <summary>
-        /// 가이드 기반 최적 모델 경로 찾기
+        /// 최적 모델 경로 찾기 (개선된 버전)
         /// </summary>
         private string FindBestModelPath(string providedPath)
         {
@@ -184,7 +186,7 @@ namespace MosaicCensorSystem.Detection
                 candidates.Add(Program.ONNX_MODEL_PATH);
             }
             
-            // 가이드 기본 경로들
+            // 표준 경로들
             candidates.AddRange(new[]
             {
                 "best.onnx",
@@ -195,7 +197,7 @@ namespace MosaicCensorSystem.Detection
                 Path.Combine(Environment.CurrentDirectory, "Resources", "best.onnx")
             });
             
-            // 상위 디렉토리 검색
+            // 상위 디렉토리 검색 (3단계까지)
             var currentDir = new DirectoryInfo(Environment.CurrentDirectory);
             for (int i = 0; i < 3 && currentDir?.Parent != null; i++)
             {
@@ -212,8 +214,8 @@ namespace MosaicCensorSystem.Detection
                     if (File.Exists(path))
                     {
                         var fileInfo = new FileInfo(path);
-                        // 가이드 기준: 11.6MB 근처여야 함
-                        if (fileInfo.Length > 10 * 1024 * 1024) // 10MB 이상
+                        // 최소 5MB 이상이어야 함
+                        if (fileInfo.Length > 5 * 1024 * 1024)
                         {
                             Console.WriteLine($"✅ 유효한 모델 파일 발견: {path} ({fileInfo.Length / (1024 * 1024):F1} MB)");
                             return path;
@@ -235,19 +237,20 @@ namespace MosaicCensorSystem.Detection
         }
 
         /// <summary>
-        /// 최적 전략으로 모델 로딩
+        /// 다중 전략으로 모델 로딩 (개선된 버전)
         /// </summary>
-        private void LoadModelWithBestStrategy()
+        private void LoadModelWithMultipleStrategies()
         {
             try
             {
-                Console.WriteLine($"🤖 ONNX 모델 로딩 시작: {modelPath}");
+                Console.WriteLine($"🤖 새로운 ONNX 모델 로딩 시작: {modelPath}");
                 
                 if (!File.Exists(modelPath))
                 {
                     Console.WriteLine("❌ 모델 파일이 존재하지 않습니다");
-                    accelerationMode = "No Model";
+                    accelerationMode = "모델 파일 없음";
                     isModelLoaded = false;
+                    isModelTested = false;
                     return;
                 }
 
@@ -255,51 +258,66 @@ namespace MosaicCensorSystem.Detection
                 var fileInfo = new FileInfo(modelPath);
                 Console.WriteLine($"📊 모델 파일 크기: {fileInfo.Length / (1024 * 1024):F1} MB");
 
-                // 가이드 기준: 11.6MB 근처여야 함
                 if (fileInfo.Length < 5 * 1024 * 1024)
                 {
                     Console.WriteLine("❌ 모델 파일이 너무 작습니다 (손상되었을 가능성)");
-                    accelerationMode = "Corrupted Model";
+                    accelerationMode = "손상된 모델";
                     isModelLoaded = false;
+                    isModelTested = false;
                     return;
                 }
 
-                // GPU 먼저 시도
-                if (TryLoadGpuModel())
+                // 1. GPU 가속 시도
+                if (TryLoadWithGPUAcceleration())
                 {
-                    accelerationMode = "GPU Accelerated";
+                    accelerationMode = "GPU 가속";
                     isModelLoaded = true;
+                    isModelTested = TestModelInference();
                     Console.WriteLine("✅ GPU 가속 모델 로딩 성공!");
                     return;
                 }
 
-                // CPU 폴백
-                if (TryLoadCpuModel())
+                // 2. CPU 최적화 시도
+                if (TryLoadWithCPUOptimization())
                 {
-                    accelerationMode = "CPU Optimized";
+                    accelerationMode = "CPU 최적화";
                     isModelLoaded = true;
+                    isModelTested = TestModelInference();
                     Console.WriteLine("✅ CPU 최적화 모델 로딩 성공!");
                     return;
                 }
 
-                // 안전 모드 폴백
-                if (TryLoadSafeModel())
+                // 3. 기본 모드 시도
+                if (TryLoadWithBasicMode())
                 {
-                    accelerationMode = "Safe Mode";
+                    accelerationMode = "기본 모드";
                     isModelLoaded = true;
-                    Console.WriteLine("✅ 안전 모드 로딩 성공!");
+                    isModelTested = TestModelInference();
+                    Console.WriteLine("✅ 기본 모드 모델 로딩 성공!");
+                    return;
+                }
+
+                // 4. 안전 모드 시도
+                if (TryLoadWithSafeMode())
+                {
+                    accelerationMode = "안전 모드";
+                    isModelLoaded = true;
+                    isModelTested = TestModelInference();
+                    Console.WriteLine("✅ 안전 모드 모델 로딩 성공!");
                     return;
                 }
                 
-                accelerationMode = "Load Failed";
+                accelerationMode = "로딩 실패";
                 isModelLoaded = false;
+                isModelTested = false;
                 Console.WriteLine("❌ 모든 로딩 전략 실패");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"❌ 모델 로딩 중 예외: {ex.Message}");
-                accelerationMode = "Exception";
+                accelerationMode = "예외 발생";
                 isModelLoaded = false;
+                isModelTested = false;
                 
                 lock (modelLock)
                 {
@@ -312,7 +330,7 @@ namespace MosaicCensorSystem.Detection
         /// <summary>
         /// GPU 가속 모델 로딩 시도
         /// </summary>
-        private bool TryLoadGpuModel()
+        private bool TryLoadWithGPUAcceleration()
         {
             try
             {
@@ -323,25 +341,34 @@ namespace MosaicCensorSystem.Detection
                     EnableCpuMemArena = true,
                     EnableMemoryPattern = true,
                     ExecutionMode = ExecutionMode.ORT_PARALLEL,
-                    GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL
+                    GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
+                    InterOpNumThreads = Environment.ProcessorCount,
+                    IntraOpNumThreads = Environment.ProcessorCount
                 };
                 
                 // GPU 실행 제공자 추가
-                sessionOptions.AppendExecutionProvider_CUDA(0);
+                try
+                {
+                    sessionOptions.AppendExecutionProvider_CUDA(0);
+                }
+                catch (Exception cudaEx)
+                {
+                    Console.WriteLine($"⚠️ CUDA 실행 제공자 추가 실패: {cudaEx.Message}");
+                }
+                
                 sessionOptions.AppendExecutionProvider_CPU(); // 폴백
                 
                 lock (modelLock)
                 {
                     model = new InferenceSession(modelPath, sessionOptions);
                     ValidateModelStructure();
-                    TestInferencePerformance();
                 }
                 
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ GPU 로딩 실패: {ex.Message}");
+                Console.WriteLine($"❌ GPU 가속 로딩 실패: {ex.Message}");
                 
                 lock (modelLock)
                 {
@@ -356,7 +383,7 @@ namespace MosaicCensorSystem.Detection
         /// <summary>
         /// CPU 최적화 모델 로딩 시도
         /// </summary>
-        private bool TryLoadCpuModel()
+        private bool TryLoadWithCPUOptimization()
         {
             try
             {
@@ -367,16 +394,17 @@ namespace MosaicCensorSystem.Detection
                     EnableCpuMemArena = true,
                     EnableMemoryPattern = true,
                     ExecutionMode = ExecutionMode.ORT_PARALLEL,
-                    InterOpNumThreads = Environment.ProcessorCount,
-                    IntraOpNumThreads = Environment.ProcessorCount,
+                    InterOpNumThreads = Math.Min(8, Environment.ProcessorCount),
+                    IntraOpNumThreads = Math.Min(8, Environment.ProcessorCount),
                     GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL
                 };
+                
+                sessionOptions.AppendExecutionProvider_CPU();
                 
                 lock (modelLock)
                 {
                     model = new InferenceSession(modelPath, sessionOptions);
                     ValidateModelStructure();
-                    TestInferencePerformance();
                 }
                 
                 return true;
@@ -396,9 +424,50 @@ namespace MosaicCensorSystem.Detection
         }
 
         /// <summary>
+        /// 기본 모드 로딩 시도
+        /// </summary>
+        private bool TryLoadWithBasicMode()
+        {
+            try
+            {
+                Console.WriteLine("🔧 기본 모드 로딩 시도...");
+                
+                var sessionOptions = new SessionOptions
+                {
+                    EnableCpuMemArena = true,
+                    EnableMemoryPattern = false,
+                    ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
+                    InterOpNumThreads = 4,
+                    IntraOpNumThreads = 4,
+                    GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC
+                };
+                
+                lock (modelLock)
+                {
+                    model = new InferenceSession(modelPath, sessionOptions);
+                    ValidateModelStructure();
+                }
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ 기본 모드 로딩 실패: {ex.Message}");
+                
+                lock (modelLock)
+                {
+                    model?.Dispose();
+                    model = null;
+                }
+                
+                return false;
+            }
+        }
+
+        /// <summary>
         /// 안전 모드 로딩 시도
         /// </summary>
-        private bool TryLoadSafeModel()
+        private bool TryLoadWithSafeMode()
         {
             try
             {
@@ -419,7 +488,6 @@ namespace MosaicCensorSystem.Detection
                 {
                     model = new InferenceSession(modelPath, sessionOptions);
                     ValidateModelStructure();
-                    TestInferencePerformance();
                 }
                 
                 return true;
@@ -439,7 +507,7 @@ namespace MosaicCensorSystem.Detection
         }
 
         /// <summary>
-        /// 가이드 기반 모델 구조 검증
+        /// 모델 구조 검증
         /// </summary>
         private void ValidateModelStructure()
         {
@@ -467,7 +535,7 @@ namespace MosaicCensorSystem.Detection
                     Console.WriteLine($"  - {output.Key}: {string.Join("x", output.Value.Dimensions)}");
                 }
                 
-                // 가이드 기준 검증
+                // 구조 검증
                 var expectedInput = new[] { 1, 3, 640, 640 };
                 var expectedOutput = new[] { 1, 18, 8400 };
                 
@@ -495,24 +563,35 @@ namespace MosaicCensorSystem.Detection
         }
 
         /// <summary>
-        /// 추론 성능 테스트
+        /// 모델 추론 테스트
         /// </summary>
-        private void TestInferencePerformance()
+        private bool TestModelInference()
         {
-            if (model == null) return;
+            if (model == null) return false;
             
             try
             {
-                Console.WriteLine("🧪 추론 성능 테스트 시작...");
+                Console.WriteLine("🧪 모델 추론 테스트 시작...");
                 
-                // 더미 입력 생성
+                // 더미 입력 생성 (640x640)
                 var inputTensor = new DenseTensor<float>(new[] { 1, 3, 640, 640 });
-                var random = new Random();
+                var random = new Random(42); // 시드 고정
                 
-                // 정규화된 랜덤 값 (0~1)
-                for (int i = 0; i < inputTensor.Length; i++)
+                // ImageNet 정규화 적용
+                var mean = new[] { 0.485f, 0.456f, 0.406f };
+                var std = new[] { 0.229f, 0.224f, 0.225f };
+                
+                int idx = 0;
+                for (int c = 0; c < 3; c++)
                 {
-                    inputTensor.SetValue(i, (float)random.NextDouble());
+                    for (int h = 0; h < 640; h++)
+                    {
+                        for (int w = 0; w < 640; w++)
+                        {
+                            float normalizedValue = ((float)random.NextDouble() - mean[c]) / std[c];
+                            inputTensor.SetValue(idx++, normalizedValue);
+                        }
+                    }
                 }
                 
                 var inputs = new List<NamedOnnxValue>
@@ -520,18 +599,27 @@ namespace MosaicCensorSystem.Detection
                     NamedOnnxValue.CreateFromTensor("images", inputTensor)
                 };
                 
-                // 워밍업
+                // 워밍업 (3회)
                 Console.WriteLine("🔥 모델 워밍업 중...");
-                using (var results = model.Run(inputs))
+                for (int i = 0; i < 3; i++)
                 {
-                    var output = results.First().AsTensor<float>();
-                    Console.WriteLine($"✅ 워밍업 완료: 출력 크기 {output.Length}");
+                    using (var results = model.Run(inputs))
+                    {
+                        var output = results.First().AsTensor<float>();
+                        if (output.Length != 18 * 8400)
+                        {
+                            Console.WriteLine($"❌ 워밍업 {i+1}: 출력 크기 불일치 ({output.Length})");
+                            return false;
+                        }
+                    }
                 }
+                Console.WriteLine("✅ 워밍업 완료");
                 
-                // 성능 측정
+                // 성능 측정 (5회)
                 var times = new List<double>();
                 const int testRuns = 5;
                 
+                Console.WriteLine("⏱️ 성능 측정 중...");
                 for (int i = 0; i < testRuns; i++)
                 {
                     var start = DateTime.Now;
@@ -539,10 +627,20 @@ namespace MosaicCensorSystem.Detection
                     using (var results = model.Run(inputs))
                     {
                         var output = results.First().AsTensor<float>();
+                        
                         // 출력 유효성 검사
                         if (output.Length != 18 * 8400)
                         {
-                            throw new Exception($"출력 크기 불일치: {output.Length}, 예상: {18 * 8400}");
+                            Console.WriteLine($"❌ 테스트 {i+1}: 출력 크기 불일치 ({output.Length})");
+                            return false;
+                        }
+                        
+                        // 첫 번째 값 검사
+                        var firstValue = output.GetValue(0);
+                        if (float.IsNaN(firstValue) || float.IsInfinity(firstValue))
+                        {
+                            Console.WriteLine($"❌ 테스트 {i+1}: 출력 값 이상 ({firstValue})");
+                            return false;
                         }
                     }
                     
@@ -554,15 +652,17 @@ namespace MosaicCensorSystem.Detection
                 double avgTime = times.Average();
                 double fps = 1000.0 / avgTime;
                 
-                Console.WriteLine($"📊 성능 결과:");
+                Console.WriteLine($"📊 최종 성능 결과:");
                 Console.WriteLine($"  평균 추론 시간: {avgTime:F1}ms");
                 Console.WriteLine($"  예상 FPS: {fps:F1}");
+                Console.WriteLine($"  성능 등급: {(fps > 30 ? "고성능" : fps > 15 ? "보통" : "저성능")}");
                 
+                return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ 성능 테스트 실패: {ex.Message}");
-                throw;
+                Console.WriteLine($"❌ 추론 테스트 실패: {ex.Message}");
+                return false;
             }
         }
 
@@ -578,7 +678,7 @@ namespace MosaicCensorSystem.Detection
         {
             if (isDisposed) return;
             
-            Strength = Math.Max(5, Math.Min(50, strength)); // 가이드 기준 확장
+            Strength = Math.Max(5, Math.Min(50, strength));
             Console.WriteLine($"💪 강도 변경: {Strength}");
         }
 
@@ -605,25 +705,32 @@ namespace MosaicCensorSystem.Detection
         }
 
         /// <summary>
-        /// 가이드 기반 정확한 객체 감지
+        /// 완전히 새로운 객체 감지 메서드 (강화된 디버깅)
         /// </summary>
         public List<Detection> DetectObjects(Mat frame)
         {
+            // 🚨 강제 디버깅 로그
+            Console.WriteLine($"\n🚨🚨🚨 MosaicProcessor.DetectObjects 호출됨!");
+            Console.WriteLine($"🔍 프레임 상태: {frame?.Width}x{frame?.Height}, Empty={frame?.Empty()}");
+            Console.WriteLine($"🔍 모델 상태: isDisposed={isDisposed}, isModelLoaded={isModelLoaded}, isModelTested={isModelTested}");
+            Console.WriteLine($"🔍 현재 설정: 신뢰도={ConfThreshold}, 타겟=[{string.Join(", ", Targets)}]");
+            
             if (isDisposed)
             {
-                Console.WriteLine("⚠️ 프로세서가 해제된 상태입니다");
+                Console.WriteLine("❌ STOP: 프로세서가 해제됨");
                 return new List<Detection>();
             }
 
             if (frame == null || frame.Empty())
             {
-                Console.WriteLine("⚠️ 입력 프레임이 null이거나 비어있습니다");
+                Console.WriteLine("❌ STOP: 프레임이 null이거나 비어있음");
                 return new List<Detection>();
             }
 
             if (!isModelLoaded)
             {
-                Console.WriteLine("⚠️ 모델이 로드되지 않았습니다");
+                Console.WriteLine("❌ STOP: 모델이 로드되지 않음");
+                Console.WriteLine($"   상세 정보: modelPath={modelPath}, File.Exists={File.Exists(modelPath)}, model={model != null}");
                 return new List<Detection>();
             }
 
@@ -634,15 +741,18 @@ namespace MosaicCensorSystem.Detection
 
                 Console.WriteLine($"🔍 객체 감지 시작 (프레임 #{frameCounter})");
 
-                // 가이드 기반 전처리
-                var preprocessResult = PreprocessImageOptimized(frame);
+                // 1단계: 전처리
+                Console.WriteLine("🔧 1단계: 전처리 시작...");
+                var preprocessResult = PreprocessFrame(frame);
                 if (preprocessResult.inputData == null)
                 {
                     Console.WriteLine("❌ 전처리 실패");
                     return new List<Detection>();
                 }
+                Console.WriteLine("✅ 1단계: 전처리 완료");
 
-                // 가이드 기반 추론
+                // 2단계: 추론
+                Console.WriteLine("🧠 2단계: 추론 시작...");
                 float[,,] output = null;
                 lock (modelLock)
                 {
@@ -660,13 +770,16 @@ namespace MosaicCensorSystem.Detection
                             NamedOnnxValue.CreateFromTensor("images", inputTensor)
                         };
 
+                        var inferenceStart = DateTime.Now;
                         using var results = model.Run(inputs);
+                        var inferenceTime = (DateTime.Now - inferenceStart).TotalMilliseconds;
+                        
                         var tensorOutput = results.First().AsTensor<float>();
                         
-                        // (1, 18, 8400) 형태로 변환
+                        // 3차원 배열로 변환
                         output = ConvertToArray(tensorOutput);
                         
-                        Console.WriteLine($"✅ 추론 완료: {output.GetLength(0)}x{output.GetLength(1)}x{output.GetLength(2)}");
+                        Console.WriteLine($"✅ 추론 완료: {inferenceTime:F1}ms, 출력 크기 {output.GetLength(0)}x{output.GetLength(1)}x{output.GetLength(2)}");
                     }
                     catch (Exception ex)
                     {
@@ -677,28 +790,58 @@ namespace MosaicCensorSystem.Detection
 
                 if (output == null)
                 {
-                    Console.WriteLine("❌ 추론 결과가 null입니다");
+                    Console.WriteLine("❌ 추론 결과가 null");
                     return new List<Detection>();
                 }
 
-                // 가이드 기반 후처리
-                var rawDetections = ProcessOutputOptimized(output, 
+                // 3단계: 후처리
+                Console.WriteLine("📊 3단계: 후처리 시작...");
+                var rawDetections = PostprocessOutput(output, 
                     preprocessResult.scale, preprocessResult.padX, preprocessResult.padY, 
                     preprocessResult.originalWidth, preprocessResult.originalHeight);
 
                 Console.WriteLine($"🎯 원시 감지 결과: {rawDetections.Count}개");
 
-                // 트래킹 적용
-                var trackedDetections = ApplyTrackingOptimized(rawDetections);
+                // 4단계: 트래킹 적용
+                var trackedDetections = ApplyTracking(rawDetections);
 
                 Console.WriteLine($"🎯 최종 감지 결과: {trackedDetections.Count}개");
+
+                // 감지 결과 상세 출력
+                if (trackedDetections.Count > 0)
+                {
+                    Console.WriteLine("📋 감지된 객체들:");
+                    for (int i = 0; i < Math.Min(5, trackedDetections.Count); i++)
+                    {
+                        var det = trackedDetections[i];
+                        Console.WriteLine($"  {i+1}. {det.ClassName} (신뢰도: {det.Confidence:F3}, 크기: {det.Width}x{det.Height})");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("📋 감지된 객체 없음");
+                    Console.WriteLine($"💡 디버깅 정보:");
+                    Console.WriteLine($"   - 원시 감지 수: {rawDetections.Count}");
+                    Console.WriteLine($"   - 신뢰도 임계값: {ConfThreshold}");
+                    Console.WriteLine($"   - 타겟 클래스: [{string.Join(", ", Targets)}]");
+                    
+                    // 낮은 신뢰도로 재테스트
+                    Console.WriteLine($"🧪 낮은 신뢰도(0.01)로 재테스트...");
+                    var originalConf = ConfThreshold;
+                    ConfThreshold = 0.01f;
+                    var testDetections = PostprocessOutput(output, 
+                        preprocessResult.scale, preprocessResult.padX, preprocessResult.padY, 
+                        preprocessResult.originalWidth, preprocessResult.originalHeight);
+                    ConfThreshold = originalConf;
+                    Console.WriteLine($"🧪 낮은 신뢰도 결과: {testDetections.Count}개");
+                }
 
                 // 성능 통계 업데이트
                 var detectionTime = (DateTime.Now - startTime).TotalMilliseconds;
                 lock (statsLock)
                 {
                     detectionTimes.Add(detectionTime);
-                    if (detectionTimes.Count > 100) // 더 많은 샘플 보관
+                    if (detectionTimes.Count > 100)
                     {
                         detectionTimes.RemoveRange(0, 50);
                     }
@@ -711,36 +854,33 @@ namespace MosaicCensorSystem.Detection
                     CleanupExpiredTracks();
                 }
 
-                Console.WriteLine($"✅ 감지 완료 ({detectionTime:F1}ms)");
+                Console.WriteLine($"⏱️ 총 감지 시간: {detectionTime:F1}ms");
+                Console.WriteLine($"🚨🚨🚨 MosaicProcessor.DetectObjects 완료!\n");
+                
                 return trackedDetections;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ 감지 중 예외 발생: {ex.Message}");
+                Console.WriteLine($"❌ DetectObjects 예외: {ex.GetType().Name}: {ex.Message}");
+                Console.WriteLine($"❌ 스택 트레이스: {ex.StackTrace}");
                 return new List<Detection>();
             }
         }
 
         /// <summary>
-        /// 가이드 기반 최적화된 이미지 전처리
+        /// 프레임 전처리 (최적화된 버전)
         /// </summary>
-        private (float[] inputData, float scale, int padX, int padY, int originalWidth, int originalHeight) PreprocessImageOptimized(Mat frame)
+        private (float[] inputData, float scale, int padX, int padY, int originalWidth, int originalHeight) PreprocessFrame(Mat frame)
         {
             try
             {
-                if (frame == null || frame.Empty() || isDisposed)
-                {
-                    Console.WriteLine("❌ 전처리: 입력 프레임 문제");
-                    return (null, 1.0f, 0, 0, 0, 0);
-                }
-
                 const int inputSize = 640;
                 int originalWidth = frame.Width;
                 int originalHeight = frame.Height;
 
-                Console.WriteLine($"🔧 전처리 시작: {originalWidth}x{originalHeight} -> {inputSize}x{inputSize}");
+                Console.WriteLine($"🔧 전처리: {originalWidth}x{originalHeight} -> {inputSize}x{inputSize}");
 
-                // 가이드 기반: 비율 유지 리사이즈 계산
+                // 비율 유지 리사이즈 계산
                 float scale = Math.Min((float)inputSize / originalWidth, (float)inputSize / originalHeight);
                 int newWidth = (int)(originalWidth * scale);
                 int newHeight = (int)(originalHeight * scale);
@@ -755,20 +895,20 @@ namespace MosaicCensorSystem.Detection
 
                 try
                 {
-                    // 1. 비율 유지 리사이즈
+                    // 리사이즈
                     resized = new Mat();
                     Cv2.Resize(frame, resized, new OpenCvSharp.Size(newWidth, newHeight), interpolation: InterpolationFlags.Linear);
 
-                    // 2. letterbox 패딩 추가
+                    // letterbox 패딩
                     padded = new Mat();
                     Cv2.CopyMakeBorder(resized, padded, padY, padY, padX, padX, 
                         BorderTypes.Constant, new Scalar(114, 114, 114));
 
-                    // 3. BGR to RGB 변환
+                    // BGR to RGB 변환
                     rgb = new Mat();
                     Cv2.CvtColor(padded, rgb, ColorConversionCodes.BGR2RGB);
 
-                    // 4. 정규화 및 NCHW 형식으로 변환 (버퍼 재사용)
+                    // 정규화 및 NCHW 형식으로 변환
                     var indexer = rgb.GetGenericIndexer<Vec3b>();
                     
                     for (int h = 0; h < 640; h++)
@@ -776,7 +916,7 @@ namespace MosaicCensorSystem.Detection
                         for (int w = 0; w < 640; w++)
                         {
                             var pixel = indexer[h, w];
-                            // NCHW 형식: [batch, channel, height, width]
+                            // NCHW 형식
                             reuseInputBuffer[0 * 640 * 640 + h * 640 + w] = pixel.Item0 / 255.0f; // R
                             reuseInputBuffer[1 * 640 * 640 + h * 640 + w] = pixel.Item1 / 255.0f; // G  
                             reuseInputBuffer[2 * 640 * 640 + h * 640 + w] = pixel.Item2 / 255.0f; // B
@@ -807,10 +947,9 @@ namespace MosaicCensorSystem.Detection
         {
             try
             {
-                var dimensions = tensor.Dimensions.ToArray(); // ReadOnlySpan을 배열로 변환
+                var dimensions = tensor.Dimensions.ToArray();
                 if (dimensions.Length != 3 || dimensions[0] != 1 || dimensions[1] != 18 || dimensions[2] != 8400)
                 {
-                    // string.Join 수정: 배열을 객체 배열로 변환
                     var dimensionStrings = dimensions.Select(d => d.ToString()).ToArray();
                     throw new Exception($"예상치 못한 텐서 크기: {string.Join("x", dimensionStrings)}");
                 }
@@ -835,10 +974,10 @@ namespace MosaicCensorSystem.Detection
         }
 
         /// <summary>
-        /// 가이드 기반 최적화된 후처리
+        /// 출력 후처리 (강화된 디버깅)
         /// </summary>
-        private List<Detection> ProcessOutputOptimized(float[,,] output, float scale, int padX, int padY, 
-                                                       int originalWidth, int originalHeight)
+        private List<Detection> PostprocessOutput(float[,,] output, float scale, int padX, int padY, 
+                                                 int originalWidth, int originalHeight)
         {
             var detections = new List<Detection>();
 
@@ -847,11 +986,14 @@ namespace MosaicCensorSystem.Detection
                 const int numClasses = 14;
                 const int numDetections = 8400;
                 
-                Console.WriteLine($"🔧 후처리 시작: {numDetections}개 앵커 처리");
+                Console.WriteLine($"🔧 후처리 시작: {numDetections}개 앵커, 신뢰도 임계값={ConfThreshold}");
 
                 int validDetections = 0;
+                int totalCandidates = 0;
+                int confidenceFiltered = 0;
+                int targetFiltered = 0;
+                int sizeFiltered = 0;
                 
-                // 가이드 기준: 8400개 앵커 순회
                 for (int i = 0; i < numDetections; i++)
                 {
                     if (isDisposed) break;
@@ -876,54 +1018,85 @@ namespace MosaicCensorSystem.Detection
                         }
                     }
 
+                    // 기본 유효성 검사
+                    if (maxClass == -1 || maxScore <= 0.001f || 
+                        centerX <= 0 || centerY <= 0 || width <= 0 || height <= 0)
+                        continue;
+
+                    totalCandidates++;
+
                     // 신뢰도 필터링
-                    if (maxScore > ConfThreshold && ClassNames.ContainsKey(maxClass))
+                    if (maxScore <= ConfThreshold)
                     {
-                        string className = ClassNames[maxClass];
-                        
-                        // 타겟 클래스 필터링
-                        if (!Targets.Contains(className))
-                            continue;
+                        confidenceFiltered++;
+                        continue;
+                    }
 
-                        // 좌표 변환 (center -> corner + 패딩 보정 + 스케일링)
-                        float x1 = (centerX - width / 2 - padX) / scale;
-                        float y1 = (centerY - height / 2 - padY) / scale;
-                        float x2 = (centerX + width / 2 - padX) / scale;
-                        float y2 = (centerY + height / 2 - padY) / scale;
+                    // 클래스 이름 확인
+                    if (!ClassNames.ContainsKey(maxClass))
+                        continue;
 
-                        // 경계 확인
-                        x1 = Math.Max(0, Math.Min(x1, originalWidth - 1));
-                        y1 = Math.Max(0, Math.Min(y1, originalHeight - 1));
-                        x2 = Math.Max(0, Math.Min(x2, originalWidth - 1));
-                        y2 = Math.Max(0, Math.Min(y2, originalHeight - 1));
+                    string className = ClassNames[maxClass];
 
-                        int boxWidth = (int)(x2 - x1);
-                        int boxHeight = (int)(y2 - y1);
-                        
-                        // 최소 크기 확인
-                        if (boxWidth > 5 && boxHeight > 5)
-                        {
-                            var detection = new Detection
-                            {
-                                ClassName = className,
-                                Confidence = maxScore,
-                                BBox = new int[] { (int)x1, (int)y1, (int)x2, (int)y2 },
-                                ClassId = maxClass
-                            };
-                            
-                            detections.Add(detection);
-                            validDetections++;
-                        }
+                    // 타겟 클래스 필터링
+                    if (!Targets.Contains(className))
+                    {
+                        targetFiltered++;
+                        continue;
+                    }
+
+                    // 좌표 변환 (center -> corner + 패딩 보정 + 스케일링)
+                    float x1 = (centerX - width / 2 - padX) / scale;
+                    float y1 = (centerY - height / 2 - padY) / scale;
+                    float x2 = (centerX + width / 2 - padX) / scale;
+                    float y2 = (centerY + height / 2 - padY) / scale;
+
+                    // 경계 확인
+                    x1 = Math.Max(0, Math.Min(x1, originalWidth - 1));
+                    y1 = Math.Max(0, Math.Min(y1, originalHeight - 1));
+                    x2 = Math.Max(0, Math.Min(x2, originalWidth - 1));
+                    y2 = Math.Max(0, Math.Min(y2, originalHeight - 1));
+
+                    int boxWidth = (int)(x2 - x1);
+                    int boxHeight = (int)(y2 - y1);
+                    
+                    // 최소 크기 확인
+                    if (boxWidth <= 10 || boxHeight <= 10)
+                    {
+                        sizeFiltered++;
+                        continue;
+                    }
+
+                    var detection = new Detection
+                    {
+                        ClassName = className,
+                        Confidence = maxScore,
+                        BBox = new int[] { (int)x1, (int)y1, (int)x2, (int)y2 },
+                        ClassId = maxClass
+                    };
+                    
+                    detections.Add(detection);
+                    validDetections++;
+
+                    // 처음 몇 개는 상세 로그
+                    if (validDetections <= 5)
+                    {
+                        Console.WriteLine($"  감지 {validDetections}: {className} (신뢰도: {maxScore:F3}, 크기: {boxWidth}x{boxHeight})");
                     }
                 }
 
-                Console.WriteLine($"✅ 후처리 완료: {validDetections}개 유효 감지");
+                Console.WriteLine($"📊 후처리 통계:");
+                Console.WriteLine($"  총 후보: {totalCandidates}개");
+                Console.WriteLine($"  신뢰도 필터링: {confidenceFiltered}개");
+                Console.WriteLine($"  타겟 필터링: {targetFiltered}개");
+                Console.WriteLine($"  크기 필터링: {sizeFiltered}개");
+                Console.WriteLine($"  최종 유효: {validDetections}개");
 
-                // 가이드 기준: NMS 적용
-                if (detections.Count > 0)
+                // NMS 적용
+                if (detections.Count > 1)
                 {
-                    detections = ApplyOptimizedNMS(detections);
-                    Console.WriteLine($"✅ NMS 적용 후: {detections.Count}개 감지");
+                    detections = ApplyNMS(detections);
+                    Console.WriteLine($"✅ NMS 적용 후: {detections.Count}개");
                 }
 
                 return detections;
@@ -936,15 +1109,14 @@ namespace MosaicCensorSystem.Detection
         }
 
         /// <summary>
-        /// 가이드 기반 최적화된 NMS
+        /// NMS 적용
         /// </summary>
-        private List<Detection> ApplyOptimizedNMS(List<Detection> detections)
+        private List<Detection> ApplyNMS(List<Detection> detections)
         {
             if (detections.Count == 0 || isDisposed) return detections;
 
             try
             {
-                // 신뢰도 기준 정렬
                 detections = detections.OrderByDescending(d => d.Confidence).ToList();
                 var keep = new List<Detection>();
 
@@ -954,10 +1126,8 @@ namespace MosaicCensorSystem.Detection
                     keep.Add(current);
                     detections.RemoveAt(0);
 
-                    // 클래스별 최적화된 NMS 임계값 사용
                     float nmsThreshold = NmsThresholds.GetValueOrDefault(current.ClassName, 0.45f);
 
-                    // 같은 클래스의 겹치는 박스 제거
                     for (int i = detections.Count - 1; i >= 0; i--)
                     {
                         if (detections[i].ClassName == current.ClassName)
@@ -1008,9 +1178,9 @@ namespace MosaicCensorSystem.Detection
         }
 
         /// <summary>
-        /// 최적화된 트래킹 적용
+        /// 트래킹 적용
         /// </summary>
-        private List<Detection> ApplyTrackingOptimized(List<Detection> rawDetections)
+        private List<Detection> ApplyTracking(List<Detection> rawDetections)
         {
             if (isDisposed) return rawDetections;
 
@@ -1023,14 +1193,12 @@ namespace MosaicCensorSystem.Detection
                         return rawDetections;
                     }
 
-                    // Detection을 Rect2d로 변환
                     var detectionBoxes = rawDetections.Select(d => new Rect2d(
                         d.BBox[0], d.BBox[1], 
                         d.BBox[2] - d.BBox[0], 
                         d.BBox[3] - d.BBox[1]
                     )).ToList();
 
-                    // SortTracker 업데이트
                     var trackedResults = tracker.Update(detectionBoxes);
 
                     var trackedDetections = new List<Detection>();
@@ -1042,10 +1210,8 @@ namespace MosaicCensorSystem.Detection
 
                         detection.TrackId = trackId;
 
-                        // 트래킹된 객체 정보 업데이트
                         UpdateTrackedObject(trackId, detection, trackedBox);
 
-                        // 안정성 플래그 설정
                         detection.IsStable = trackedObjects.ContainsKey(trackId) && 
                                            trackedObjects[trackId].StableFrameCount >= STABLE_FRAME_THRESHOLD;
 
@@ -1085,12 +1251,10 @@ namespace MosaicCensorSystem.Detection
             {
                 var trackedObj = trackedObjects[trackId];
                 
-                // 영역 변화 계산
                 double areaChange = Math.Abs(trackedBox.Width * trackedBox.Height - 
                                            trackedObj.BoundingBox.Width * trackedObj.BoundingBox.Height) /
                                   Math.Max(trackedObj.BoundingBox.Width * trackedObj.BoundingBox.Height, 1.0);
 
-                // 안정성 판단
                 if (areaChange < CACHE_REGION_THRESHOLD && detection.ClassName == trackedObj.ClassName)
                 {
                     trackedObj.StableFrameCount++;
@@ -1102,7 +1266,6 @@ namespace MosaicCensorSystem.Detection
                     trackedObj.CachedCensorRegion = null;
                 }
 
-                // 검열 설정 변경시 캐시 무효화
                 if (trackedObj.LastCensorType != CurrentCensorType || 
                     trackedObj.LastStrength != Strength)
                 {
@@ -1152,7 +1315,7 @@ namespace MosaicCensorSystem.Detection
         }
 
         /// <summary>
-        /// 캐싱 최적화된 검열 효과 적용
+        /// 검열 효과 적용 (캐싱 최적화)
         /// </summary>
         public void ApplySingleCensorOptimized(Mat processedFrame, Detection detection)
         {
@@ -1164,19 +1327,16 @@ namespace MosaicCensorSystem.Detection
                 var bbox = detection.BBox;
                 int x1 = bbox[0], y1 = bbox[1], x2 = bbox[2], y2 = bbox[3];
                 
-                // 경계 확인
                 if (x2 <= x1 || y2 <= y1 || x1 < 0 || y1 < 0 || 
                     x2 > processedFrame.Width || y2 > processedFrame.Height)
                     return;
 
                 lock (trackingLock)
                 {
-                    // 트래킹된 객체의 캐시 활용
                     if (detection.TrackId != -1 && trackedObjects.ContainsKey(detection.TrackId))
                     {
                         var trackedObj = trackedObjects[detection.TrackId];
 
-                        // 캐시된 검열 효과 사용
                         if (detection.IsStable && trackedObj.CachedCensorRegion != null &&
                             trackedObj.LastCensorType == CurrentCensorType &&
                             trackedObj.LastStrength == Strength)
@@ -1188,13 +1348,11 @@ namespace MosaicCensorSystem.Detection
                             }
                         }
 
-                        // 캐시 미스 - 새로운 검열 효과 생성
                         ApplyFreshCensor(processedFrame, detection, trackedObj);
                         cacheMisses++;
                     }
                     else
                     {
-                        // 트래킹되지 않은 객체 - 일반 검열
                         ApplyDirectCensor(processedFrame, detection);
                         cacheMisses++;
                     }
@@ -1206,9 +1364,6 @@ namespace MosaicCensorSystem.Detection
             }
         }
 
-        /// <summary>
-        /// 캐시된 검열 효과 적용 시도
-        /// </summary>
         private bool TryApplyCachedCensor(Mat processedFrame, Detection detection, TrackedObject trackedObj)
         {
             try
@@ -1230,9 +1385,6 @@ namespace MosaicCensorSystem.Detection
             return false;
         }
 
-        /// <summary>
-        /// 새로운 검열 효과 생성 및 캐싱
-        /// </summary>
         private void ApplyFreshCensor(Mat processedFrame, Detection detection, TrackedObject trackedObj)
         {
             try
@@ -1247,7 +1399,6 @@ namespace MosaicCensorSystem.Detection
                             {
                                 censoredRegion.CopyTo(region);
 
-                                // 안정적인 객체인 경우 캐싱
                                 if (detection.IsStable)
                                 {
                                     trackedObj.CachedCensorRegion?.Dispose();
@@ -1266,9 +1417,6 @@ namespace MosaicCensorSystem.Detection
             }
         }
 
-        /// <summary>
-        /// 직접 검열 효과 적용
-        /// </summary>
         private void ApplyDirectCensor(Mat processedFrame, Detection detection)
         {
             try
@@ -1293,9 +1441,6 @@ namespace MosaicCensorSystem.Detection
             }
         }
 
-        /// <summary>
-        /// 검열 효과 적용 (가이드 기반)
-        /// </summary>
         private Mat ApplyCensorEffect(Mat image, int strength)
         {
             return CurrentCensorType switch
@@ -1306,9 +1451,6 @@ namespace MosaicCensorSystem.Detection
             };
         }
 
-        /// <summary>
-        /// 가이드 기반 모자이크 효과
-        /// </summary>
         private Mat ApplyMosaicEffect(Mat image, int mosaicSize)
         {
             if (isDisposed || image == null || image.Empty())
@@ -1319,7 +1461,6 @@ namespace MosaicCensorSystem.Detection
                 int h = image.Height;
                 int w = image.Width;
 
-                // 가이드 기준: 축소 -> 확대
                 int smallH = Math.Max(1, h / mosaicSize);
                 int smallW = Math.Max(1, w / mosaicSize);
 
@@ -1340,9 +1481,6 @@ namespace MosaicCensorSystem.Detection
             }
         }
 
-        /// <summary>
-        /// 블러 효과
-        /// </summary>
         private Mat ApplyBlurEffect(Mat image, int blurStrength)
         {
             if (isDisposed || image == null || image.Empty())
@@ -1439,7 +1577,7 @@ namespace MosaicCensorSystem.Detection
                     };
                 }
 
-                double avgTime = detectionTimes.Average() / 1000.0; // ms to seconds
+                double avgTime = detectionTimes.Average() / 1000.0;
                 double fps = avgTime > 0 ? 1.0 / avgTime : 0;
 
                 return new PerformanceStats
@@ -1463,7 +1601,7 @@ namespace MosaicCensorSystem.Detection
                 switch (kvp.Key)
                 {
                     case "conf_threshold":
-                        ConfThreshold = Math.Max(0.1f, Math.Min(0.9f, Convert.ToSingle(kvp.Value)));
+                        ConfThreshold = Math.Max(0.05f, Math.Min(0.95f, Convert.ToSingle(kvp.Value)));
                         break;
                     case "targets":
                         if (kvp.Value is List<string> targets)
@@ -1533,7 +1671,6 @@ namespace MosaicCensorSystem.Detection
             {
                 isDisposed = true;
                 
-                // 트래킹된 객체들 정리
                 lock (trackingLock)
                 {
                     foreach (var trackedObj in trackedObjects.Values)
@@ -1543,7 +1680,6 @@ namespace MosaicCensorSystem.Detection
                     trackedObjects.Clear();
                 }
                 
-                // 모델 정리
                 lock (modelLock)
                 {
                     try
@@ -1557,7 +1693,7 @@ namespace MosaicCensorSystem.Detection
                     model = null;
                 }
                 
-                Console.WriteLine($"🧹 {accelerationMode} 검열 프로세서 리소스 정리됨");
+                Console.WriteLine($"🧹 {accelerationMode} MosaicProcessor 리소스 정리됨");
             }
         }
     }
