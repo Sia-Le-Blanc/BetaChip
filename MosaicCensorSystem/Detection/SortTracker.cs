@@ -1,94 +1,105 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using OpenCvSharp;
 
 namespace MosaicCensorSystem.Detection
 {
     /// <summary>
-    /// 간단한 SORT 기반 트래커 (ID 할당 + IOU 기반 추적)
+    /// SORT 알고리즘을 간소화하여 객체를 추적하는 클래스 (단순화 버전)
     /// </summary>
     public class SortTracker
     {
         private int nextId = 0;
-        private readonly Dictionary<int, Track> tracks = new();
-        private readonly float iouThreshold = 0.3f;
-        private readonly int maxAge = 10;
+        private readonly Dictionary<int, Track> activeTracks = new();
+        private const float IouThreshold = 0.3f;
+        private const int MaxAge = 10; // 프레임
 
-        public class Track
+        private class Track
         {
             public int Id;
             public Rect2d Box;
-            public int Age = 0;
+            public int Age;
         }
 
         /// <summary>
-        /// 현재 감지된 BBox 리스트를 기반으로 추적 결과(ID 포함)를 반환
+        /// 새로운 감지 결과를 기반으로 객체 추적을 업데이트합니다.
         /// </summary>
         public List<(int id, Rect2d box)> Update(List<Rect2d> detections)
         {
+            // 1. 기존 트랙들의 나이를 1 증가
+            foreach (var track in activeTracks.Values)
+            {
+                track.Age++;
+            }
+
+            // 2. 감지된 객체와 기존 트랙 매칭
+            var matchedTracks = new HashSet<int>();
             var results = new List<(int id, Rect2d box)>();
-            var unmatchedTracks = new HashSet<int>(tracks.Keys);
-            var matched = new HashSet<int>();
 
             foreach (var det in detections)
             {
-                int matchedId = -1;
-                double maxIoU = iouThreshold;
+                int bestMatchId = -1;
+                double maxIoU = IouThreshold;
 
-                foreach (var track in tracks)
+                // 가장 IoU가 높은 트랙 찾기
+                foreach (var track in activeTracks.Values)
                 {
-                    if (matched.Contains(track.Key)) continue;
+                    if (matchedTracks.Contains(track.Id)) continue;
 
-                    double iou = ComputeIoU(track.Value.Box, det);
+                    double iou = ComputeIoU(track.Box, det);
                     if (iou > maxIoU)
                     {
-                        matchedId = track.Key;
                         maxIoU = iou;
+                        bestMatchId = track.Id;
                     }
                 }
 
-                if (matchedId != -1)
+                if (bestMatchId != -1)
                 {
-                    tracks[matchedId].Box = det;
-                    tracks[matchedId].Age = 0;
-                    results.Add((matchedId, det));
-                    matched.Add(matchedId);
-                    unmatchedTracks.Remove(matchedId);
+                    // 매칭 성공: 트랙 정보 업데이트
+                    activeTracks[bestMatchId].Box = det;
+                    activeTracks[bestMatchId].Age = 0; // 나이 초기화
+                    matchedTracks.Add(bestMatchId);
+                    results.Add((bestMatchId, det));
                 }
                 else
                 {
-                    var newTrack = new Track { Id = nextId++, Box = det };
-                    tracks[newTrack.Id] = newTrack;
-                    results.Add((newTrack.Id, det));
+                    // 매칭 실패: 새로운 트랙 생성
+                    var newTrack = new Track { Id = nextId++, Box = det, Age = 0 };
+                    activeTracks[newTrack.Id] = newTrack;
+                    results.Add((newTrack.Id, newTrack.Box));
                 }
             }
 
-            foreach (var id in unmatchedTracks)
+            // 3. 오래된 트랙 제거
+            var oldTrackIds = activeTracks.Values
+                .Where(t => t.Age > MaxAge)
+                .Select(t => t.Id)
+                .ToList();
+
+            foreach (var id in oldTrackIds)
             {
-                tracks[id].Age++;
-                if (tracks[id].Age > maxAge)
-                    tracks.Remove(id);
+                activeTracks.Remove(id);
             }
 
             return results;
         }
 
         /// <summary>
-        /// IOU 계산 함수
+        /// 두 사각형의 IoU(Intersection over Union)를 계산합니다.
         /// </summary>
-        private double ComputeIoU(Rect2d a, Rect2d b)
+        private double ComputeIoU(Rect2d rectA, Rect2d rectB)
         {
-            double xx1 = Math.Max(a.X, b.X);
-            double yy1 = Math.Max(a.Y, b.Y);
-            double xx2 = Math.Min(a.X + a.Width, b.X + b.Width);
-            double yy2 = Math.Min(a.Y + a.Height, b.Y + b.Height);
+            // 교차 영역 계산
+            Rect2d intersection = rectA.Intersect(rectB);
+            double intersectArea = intersection.Width * intersection.Height;
 
-            double w = Math.Max(0, xx2 - xx1);
-            double h = Math.Max(0, yy2 - yy1);
-            double inter = w * h;
-            double union = a.Width * a.Height + b.Width * b.Height - inter;
+            // 합집합 영역 계산
+            double unionArea = (rectA.Width * rectA.Height) + (rectB.Width * rectB.Height) - intersectArea;
 
-            return union <= 0 ? 0 : inter / union;
+            // IoU 반환
+            return unionArea > 0 ? intersectArea / unionArea : 0;
         }
     }
 }

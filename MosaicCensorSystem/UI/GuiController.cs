@@ -4,618 +4,187 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using MosaicCensorSystem.Detection; // CensorType을 위해 추가
 
 namespace MosaicCensorSystem.UI
 {
     /// <summary>
-    /// 신호 클래스 (콜백 관리)
+    /// 메인 윈도우의 UI 생성 및 이벤트 처리를 담당하는 컨트롤러.
     /// </summary>
-    public class Signal
+    public class GuiController
     {
-        private readonly List<Action> callbacks = new List<Action>();
+        // --- Events ---
+        public event Action<int> FpsChanged;
+        public event Action<bool> DetectionToggled;
+        public event Action<bool> CensoringToggled;
+        public event Action<CensorType> CensorTypeChanged;
+        public event Action<int> StrengthChanged;
+        public event Action<float> ConfidenceChanged;
+        public event Action StartClicked;
+        public event Action StopClicked;
+        public event Action TestCaptureClicked;
+        public event Action<List<string>> TargetsChanged;
 
-        public void Connect(Action callback)
-        {
-            if (callback != null)
-            {
-                callbacks.Add(callback);
-            }
-        }
-
-        public void Emit()
-        {
-            foreach (var callback in callbacks)
-            {
-                try
-                {
-                    callback?.Invoke();
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"⚠️ 신호 실행 오류: {ex.Message}");
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// 메인 윈도우 클래스 (간단한 스크롤)
-    /// </summary>
-    public class MainWindow : Form
-    {
-        // 설정 및 상태 변수
-        public int Strength { get; private set; }
-        public List<string> Targets { get; private set; }
-        public bool Running { get; private set; }
-        public string RenderModeInfo { get; private set; }
-
-        // UI 컨트롤
-        private readonly Dictionary<string, CheckBox> checkboxes = new Dictionary<string, CheckBox>();
+        // --- UI Controls ---
+        private readonly Form rootForm;
         private Label statusLabel;
-        private Label renderModeLabel;
-        private TrackBar strengthSlider;
-        private Label strengthLabel;
-        private TrackBar confidenceSlider;
-        private Label confidenceLabel;
+        private TextBox logTextBox;
+        private Button startButton;
+        private Button stopButton;
+        private readonly Dictionary<string, CheckBox> targetCheckBoxes = new Dictionary<string, CheckBox>();
 
-        // 콜백 함수
-        public Action StartCallback { get; set; }
-        public Action StopCallback { get; set; }
-
-        // 드래그 관련
-        private bool isDragging = false;
-        private Point dragStartPoint;
-
-        // 스크롤 가능한 컨테이너
-        private ScrollablePanel scrollableContainer;
-
-        public MainWindow(Dictionary<string, object> config = null)
+        public GuiController(Form mainForm)
         {
-            config ??= Config.GetSection("mosaic");
-
-            // 설정 초기화
-            Strength = Convert.ToInt32(config.GetValueOrDefault("default_strength", 25));
-
-            var defaultTargets = new List<string> { "얼굴", "가슴", "보지", "팬티" };
-            if (config.GetValueOrDefault("default_targets", defaultTargets) is List<string> targets)
-            {
-                Targets = targets;
-            }
-            else
-            {
-                Targets = defaultTargets;
-            }
-
-            Running = false;
-            RenderModeInfo = "기본 모드";
-
-            // 윈도우 설정
-            Text = "베타 칩";
-            Size = new Size(400, 600);
-            MinimumSize = new Size(350, 400);
-            StartPosition = FormStartPosition.CenterScreen;
-            FormBorderStyle = FormBorderStyle.Sizable;
-            MaximizeBox = true;
-            MinimizeBox = true;
-
-            // UI 생성
-            CreateWidgets();
+            rootForm = mainForm;
+            CreateGui();
         }
 
-        private void CreateWidgets()
+        private void CreateGui()
         {
-            SuspendLayout();
-
-            // 드래그 가능한 제목 바
-            var titlePanel = new Panel
-            {
-                BackColor = Color.LightBlue,
-                Height = 40,
-                Dock = DockStyle.Top,
-                BorderStyle = BorderStyle.Fixed3D,
-                Cursor = Cursors.Hand
-            };
+            rootForm.SuspendLayout();
 
             var titleLabel = new Label
             {
-                Text = "🔐 베타 칩",
-                Font = new Font("Arial", 10, FontStyle.Bold),
-                BackColor = Color.LightBlue,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter
+                Text = "🤖 ONNX 화면 검열 시스템 v7.2 (Full Class)",
+                Font = new Font("Arial", 12, FontStyle.Bold),
+                BackColor = Color.LightSkyBlue,
+                BorderStyle = BorderStyle.FixedSingle,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Height = 40,
+                Dock = DockStyle.Top
             };
 
-            titlePanel.Controls.Add(titleLabel);
+            var scrollableContainer = new ScrollablePanel { Dock = DockStyle.Fill };
+            rootForm.Controls.Add(scrollableContainer);
+            rootForm.Controls.Add(titleLabel);
 
-            // 드래그 이벤트
-            titlePanel.MouseDown += OnTitleMouseDown;
-            titlePanel.MouseMove += OnTitleMouseMove;
-            titlePanel.MouseUp += OnTitleMouseUp;
-            titleLabel.MouseDown += OnTitleMouseDown;
-            titleLabel.MouseMove += OnTitleMouseMove;
-            titleLabel.MouseUp += OnTitleMouseUp;
-
-            // 스크롤 안내
-            var infoLabel = new Label
-            {
-                Text = "📜 마우스 휠로 스크롤 또는 우측 스크롤바 드래그",
-                Font = new Font("Arial", 9),
-                BackColor = Color.LightYellow,
-                ForeColor = Color.Blue,
-                Height = 25,
-                Dock = DockStyle.Top,
-                TextAlign = ContentAlignment.MiddleCenter
-            };
-
-            // 스크롤 가능한 메인 영역
-            scrollableContainer = new ScrollablePanel
-            {
-                Dock = DockStyle.Fill
-            };
-
-            // 컨트롤 추가 순서 (아래부터)
-            Controls.Add(scrollableContainer);
-            Controls.Add(infoLabel);
-            Controls.Add(titlePanel);
-
-            // 실제 내용 생성
             CreateContent(scrollableContainer.ScrollableFrame);
 
-            ResumeLayout(false);
-            PerformLayout();
+            rootForm.ResumeLayout(false);
         }
 
         private void CreateContent(Panel parent)
         {
-            if (parent == null) return;
+            int y = 10;
 
-            parent.SuspendLayout();
+            statusLabel = new Label { Text = "⭕ 시스템 대기 중", Font = new Font("Arial", 12, FontStyle.Bold), ForeColor = Color.Red, Location = new Point(10, y), AutoSize = true };
+            parent.Controls.Add(statusLabel);
+            y += 40;
 
-            // 메인 패널
-            var mainPanel = new Panel
-            {
-                Padding = new Padding(20),
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink
-            };
+            var controlGroup = new GroupBox { Text = "🎮 제어", Location = new Point(10, y), Size = new Size(460, 80) };
+            startButton = new Button { Text = "🚀 시작", BackColor = Color.DarkGreen, ForeColor = Color.White, Font = new Font("Arial", 10, FontStyle.Bold), Size = new Size(120, 40), Location = new Point(20, 25) };
+            stopButton = new Button { Text = "🛑 중지", BackColor = Color.DarkRed, ForeColor = Color.White, Font = new Font("Arial", 10, FontStyle.Bold), Size = new Size(120, 40), Location = new Point(160, 25), Enabled = false };
+            var testButton = new Button { Text = "🔍 테스트", BackColor = Color.DarkBlue, ForeColor = Color.White, Font = new Font("Arial", 10, FontStyle.Bold), Size = new Size(120, 40), Location = new Point(300, 25) };
 
-            int y = 0;
+            startButton.Click += (s, e) => StartClicked?.Invoke();
+            stopButton.Click += (s, e) => StopClicked?.Invoke();
+            testButton.Click += (s, e) => TestCaptureClicked?.Invoke();
 
-            // 모자이크 강도
-            strengthLabel = new Label
-            {
-                Text = $"모자이크 강도: {Strength}",
-                Location = new Point(0, y),
-                AutoSize = true
-            };
-            y += 25;
+            controlGroup.Controls.AddRange(new Control[] { startButton, stopButton, testButton });
+            parent.Controls.Add(controlGroup);
+            y += 90;
 
-            strengthSlider = new TrackBar
-            {
-                Minimum = 5,
-                Maximum = 50,
-                Value = Strength,
-                TickFrequency = 5,
-                Location = new Point(0, y),
-                Width = 350
-            };
-            strengthSlider.ValueChanged += OnStrengthChanged;
-            y += 50;
+            // 설정 그룹의 전체 높이를 늘려서 모든 컨트롤이 보이도록 함
+            var settingsGroup = new GroupBox { Text = "⚙️ 설정", Location = new Point(10, y), Size = new Size(460, 330) };
+            CreateSettingsContent(settingsGroup);
+            parent.Controls.Add(settingsGroup);
+            y += 340;
 
-            // 렌더 모드 라벨
-            renderModeLabel = new Label
-            {
-                Text = RenderModeInfo,
-                Location = new Point(0, y),
-                AutoSize = true
-            };
+            var logGroup = new GroupBox { Text = "📝 로그", Location = new Point(10, y), Size = new Size(460, 120) };
+            logTextBox = new TextBox { Multiline = true, ScrollBars = ScrollBars.Vertical, ReadOnly = true, Location = new Point(10, 20), Size = new Size(440, 90), Font = new Font("Consolas", 8.25f) };
+            logGroup.Controls.Add(logTextBox);
+            parent.Controls.Add(logGroup);
+        }
+
+        private void CreateSettingsContent(GroupBox settingsGroup)
+        {
+            int y = 25;
+
+            // --- UI Elements Generation ---
+            var fpsValueLabel = new Label { Text = "15", Location = new Point(390, y), AutoSize = true };
+            var fpsSlider = new TrackBar { Minimum = 5, Maximum = 60, Value = 15, TickFrequency = 5, Location = new Point(100, y - 5), Size = new Size(280, 45) };
+            fpsSlider.ValueChanged += (s, e) => { fpsValueLabel.Text = fpsSlider.Value.ToString(); FpsChanged?.Invoke(fpsSlider.Value); };
+            settingsGroup.Controls.AddRange(new Control[] { new Label { Text = "목표 FPS:", Location = new Point(10, y), AutoSize = true }, fpsSlider, fpsValueLabel });
+            y += 40;
+
+            var enableDetectionCheckBox = new CheckBox { Text = "🔍 객체 감지", Checked = true, Location = new Point(10, y), AutoSize = true };
+            enableDetectionCheckBox.CheckedChanged += (s, e) => DetectionToggled?.Invoke(enableDetectionCheckBox.Checked);
+            var enableCensoringCheckBox = new CheckBox { Text = "🎨 검열 효과", Checked = true, Location = new Point(150, y), AutoSize = true };
+            enableCensoringCheckBox.CheckedChanged += (s, e) => CensoringToggled?.Invoke(enableCensoringCheckBox.Checked);
+            settingsGroup.Controls.AddRange(new Control[] { enableDetectionCheckBox, enableCensoringCheckBox });
             y += 30;
 
-            // 검열 대상 프레임
-            var targetsGroup = new GroupBox
-            {
-                Text = "검열 대상",
-                Location = new Point(0, y),
-                Size = new Size(350, 200)
+            var mosaicRadioButton = new RadioButton { Text = "🟦 모자이크", Checked = true, Location = new Point(10, y), AutoSize = true };
+            var blurRadioButton = new RadioButton { Text = "🌀 블러", Location = new Point(150, y), AutoSize = true };
+            EventHandler censorTypeHandler = (s, e) => { if (s is RadioButton radioButton && radioButton.Checked) { CensorTypeChanged?.Invoke(mosaicRadioButton.Checked ? CensorType.Mosaic : CensorType.Blur); } };
+            mosaicRadioButton.CheckedChanged += censorTypeHandler;
+            blurRadioButton.CheckedChanged += censorTypeHandler;
+            settingsGroup.Controls.AddRange(new Control[] { mosaicRadioButton, blurRadioButton });
+            y += 30;
+
+            var strengthValueLabel = new Label { Text = "20", Location = new Point(390, y), AutoSize = true };
+            var strengthSlider = new TrackBar { Minimum = 10, Maximum = 40, Value = 20, TickFrequency = 5, Location = new Point(100, y - 5), Size = new Size(280, 45) };
+            strengthSlider.ValueChanged += (s, e) => { strengthValueLabel.Text = strengthSlider.Value.ToString(); StrengthChanged?.Invoke(strengthSlider.Value); };
+            settingsGroup.Controls.AddRange(new Control[] { new Label { Text = "검열 강도:", Location = new Point(10, y), AutoSize = true }, strengthSlider, strengthValueLabel });
+            y += 40;
+
+            var confidenceValueLabel = new Label { Text = "0.3", Location = new Point(390, y), AutoSize = true };
+            var confidenceSlider = new TrackBar { Minimum = 10, Maximum = 90, Value = 30, TickFrequency = 10, Location = new Point(100, y - 5), Size = new Size(280, 45) };
+            confidenceSlider.ValueChanged += (s, e) => { float val = confidenceSlider.Value / 100.0f; confidenceValueLabel.Text = val.ToString("F1"); ConfidenceChanged?.Invoke(val); };
+            settingsGroup.Controls.AddRange(new Control[] { new Label { Text = "감지 신뢰도:", Location = new Point(10, y), AutoSize = true }, confidenceSlider, confidenceValueLabel });
+            y += 40;
+            
+            // ★★★★★ 학습에 사용한 14개 클래스 모두 추가 ★★★★★
+            var targetsGroup = new GroupBox { Text = "🎯 검열 대상", Location = new Point(10, y), Size = new Size(440, 130) };
+            var allTargets = new[] {
+                "얼굴", "가슴", "겨드랑이", "보지", "발", "몸 전체", "자지",
+                "팬티", "눈", "손", "교미", "신발", "가슴_옷", "여성"
             };
+            var defaultTargets = new[] { "얼굴", "가슴", "보지", "팬티" };
 
-            // 대상 옵션 체크박스
-            var options = new[]
+            for (int i = 0; i < allTargets.Length; i++)
             {
-                "얼굴", "눈", "손", "가슴", "보지", "팬티",
-                "겨드랑이", "자지", "몸 전체", "교미", "신발",
-                "가슴_옷", "보지_옷", "여성"
-            };
-
-            const int checkY = 20;
-            for (int i = 0; i < options.Length; i++)
-            {
-                var option = options[i];
-                int row = i / 2;
-                int col = i % 2;
-
-                var checkbox = new CheckBox
-                {
-                    Text = option,
-                    Checked = Targets.Contains(option),
-                    Location = new Point(10 + col * 170, checkY + row * 25),
-                    AutoSize = true
+                var checkbox = new CheckBox 
+                { 
+                    Text = allTargets[i], 
+                    Checked = defaultTargets.Contains(allTargets[i]), 
+                    // 3열로 배치, 5줄
+                    Location = new Point(15 + (i % 3) * 140, 25 + (i / 3) * 20), 
+                    AutoSize = true 
                 };
-
-                checkboxes[option] = checkbox;
+                checkbox.CheckedChanged += OnTargetChanged;
+                targetCheckBoxes[allTargets[i]] = checkbox;
                 targetsGroup.Controls.Add(checkbox);
             }
-            y += 220;
-
-            // 추가 설정 프레임
-            var settingsGroup = new GroupBox
-            {
-                Text = "추가 설정",
-                Location = new Point(0, y),
-                Size = new Size(350, 100)
-            };
-
-            // 신뢰도 설정
-            confidenceLabel = new Label
-            {
-                Text = "감지 신뢰도: 0.1",
-                Location = new Point(10, 20),
-                AutoSize = true
-            };
-
-            confidenceSlider = new TrackBar
-            {
-                Minimum = 1,
-                Maximum = 9,
-                Value = 1,
-                TickFrequency = 1,
-                Location = new Point(10, 45),
-                Width = 330
-            };
-            confidenceSlider.ValueChanged += OnConfidenceChanged;
-
-            settingsGroup.Controls.Add(confidenceLabel);
-            settingsGroup.Controls.Add(confidenceSlider);
-            y += 120;
-
-            // 버튼 프레임
-            var buttonPanel = new Panel
-            {
-                BackColor = Color.LightGray,
-                BorderStyle = BorderStyle.Fixed3D,
-                Location = new Point(0, y),
-                Size = new Size(350, 100)
-            };
-
-            var startButton = new Button
-            {
-                Text = "🚀 검열 시작",
-                BackColor = Color.Green,
-                ForeColor = Color.White,
-                Font = new Font("Arial", 14, FontStyle.Bold),
-                Size = new Size(140, 60),
-                Location = new Point(20, 20),
-                UseVisualStyleBackColor = false
-            };
-            startButton.Click += OnStartClicked;
-
-            var stopButton = new Button
-            {
-                Text = "🛑 검열 중지",
-                BackColor = Color.Red,
-                ForeColor = Color.White,
-                Font = new Font("Arial", 14, FontStyle.Bold),
-                Size = new Size(140, 60),
-                Location = new Point(190, 20),
-                UseVisualStyleBackColor = false
-            };
-            stopButton.Click += OnStopClicked;
-
-            buttonPanel.Controls.Add(startButton);
-            buttonPanel.Controls.Add(stopButton);
-            y += 120;
-
-            // 상태 표시 프레임
-            var statusGroup = new GroupBox
-            {
-                Text = "상태",
-                Location = new Point(0, y),
-                Size = new Size(350, 60)
-            };
-
-            statusLabel = new Label
-            {
-                Text = "⭕ 대기 중",
-                Font = new Font("Arial", 12),
-                ForeColor = Color.Red,
-                Location = new Point(10, 25),
-                AutoSize = true
-            };
-
-            statusGroup.Controls.Add(statusLabel);
-            y += 80;
-
-            // 스크롤 테스트
-            var testGroup = new GroupBox
-            {
-                Text = "스크롤 테스트",
-                Location = new Point(0, y),
-                Size = new Size(350, 150)
-            };
-
-            var testTexts = new[]
-            {
-                "✅ 여기까지 스크롤이 되었다면 성공!",
-                "✅ 위로 스크롤해서 버튼들을 사용하세요",
-                "✅ 마우스 휠로 쉽게 스크롤 가능",
-                "✅ 우측 스크롤바도 드래그 가능",
-                "✅ 제목바 드래그로 창 이동 가능"
-            };
-
-            int testY = 20;
-            foreach (var text in testTexts)
-            {
-                var label = new Label
-                {
-                    Text = text,
-                    Location = new Point(10, testY),
-                    AutoSize = true
-                };
-                testGroup.Controls.Add(label);
-                testY += 20;
-            }
-
-            // 컨트롤 추가
-            mainPanel.Controls.Add(strengthLabel);
-            mainPanel.Controls.Add(strengthSlider);
-            mainPanel.Controls.Add(renderModeLabel);
-            mainPanel.Controls.Add(targetsGroup);
-            mainPanel.Controls.Add(settingsGroup);
-            mainPanel.Controls.Add(buttonPanel);
-            mainPanel.Controls.Add(statusGroup);
-            mainPanel.Controls.Add(testGroup);
-
-            parent.Controls.Add(mainPanel);
-            parent.ResumeLayout(false);
-            parent.PerformLayout();
+            settingsGroup.Controls.Add(targetsGroup);
         }
 
-        private void OnTitleMouseDown(object sender, MouseEventArgs e)
+        private void OnTargetChanged(object sender, EventArgs e)
         {
-            if (e.Button == MouseButtons.Left)
-            {
-                isDragging = true;
-                dragStartPoint = e.Location;
-            }
+            var selected = targetCheckBoxes.Where(kvp => kvp.Value.Checked).Select(kvp => kvp.Key).ToList();
+            TargetsChanged?.Invoke(selected);
         }
 
-        private void OnTitleMouseMove(object sender, MouseEventArgs e)
+        public void UpdateStatus(string message, Color color)
         {
-            if (isDragging)
-            {
-                Point p = PointToScreen(e.Location);
-                Location = new Point(p.X - dragStartPoint.X, p.Y - dragStartPoint.Y);
-            }
+            if (rootForm.InvokeRequired) { rootForm.BeginInvoke(new Action(() => UpdateStatus(message, color))); return; }
+            statusLabel.Text = message;
+            statusLabel.ForeColor = color;
         }
 
-        private void OnTitleMouseUp(object sender, MouseEventArgs e)
+        public void LogMessage(string message)
         {
-            isDragging = false;
+            if (rootForm.InvokeRequired) { rootForm.BeginInvoke(new Action(() => LogMessage(message))); return; }
+            logTextBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
+            logTextBox.SelectionStart = logTextBox.Text.Length;
+            logTextBox.ScrollToCaret();
         }
 
-        private void OnStrengthChanged(object sender, EventArgs e)
+        public void SetRunningState(bool isRunning)
         {
-            if (sender is TrackBar slider)
-            {
-                Strength = slider.Value;
-                if (strengthLabel != null)
-                {
-                    strengthLabel.Text = $"모자이크 강도: {Strength}";
-                }
-            }
-        }
-
-        private void OnConfidenceChanged(object sender, EventArgs e)
-        {
-            if (sender is TrackBar slider)
-            {
-                float confidence = slider.Value / 10.0f;
-                if (confidenceLabel != null)
-                {
-                    confidenceLabel.Text = $"감지 신뢰도: {confidence:F1}";
-                }
-            }
-        }
-
-        private void OnStartClicked(object sender, EventArgs e)
-        {
-            Console.WriteLine("🖱️ 검열 시작 버튼 클릭됨");
-            Running = true;
-            Targets = GetSelectedTargets();
-            Console.WriteLine($"🎯 선택된 타겟: {string.Join(", ", Targets)}");
-
-            if (statusLabel != null)
-            {
-                statusLabel.Text = "✅ 검열 중";
-                statusLabel.ForeColor = Color.Green;
-            }
-
-            try
-            {
-                if (StartCallback != null)
-                {
-                    Console.WriteLine("✅ 검열 시작 콜백 실행");
-                    StartCallback();
-                }
-                else
-                {
-                    Console.WriteLine("⚠️ 검열 시작 콜백이 설정되지 않았습니다");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ 시작 콜백 실행 오류: {ex.Message}");
-            }
-        }
-
-        private void OnStopClicked(object sender, EventArgs e)
-        {
-            Console.WriteLine("🖱️ 검열 중지 버튼 클릭됨");
-            Running = false;
-
-            if (statusLabel != null)
-            {
-                statusLabel.Text = "⭕ 대기 중";
-                statusLabel.ForeColor = Color.Red;
-            }
-
-            try
-            {
-                if (StopCallback != null)
-                {
-                    Console.WriteLine("✅ 검열 중지 콜백 실행");
-                    StopCallback();
-                }
-                else
-                {
-                    Console.WriteLine("⚠️ 검열 중지 콜백이 설정되지 않았습니다");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ 중지 콜백 실행 오류: {ex.Message}");
-            }
-        }
-
-        public List<string> GetSelectedTargets()
-        {
-            var selected = new List<string>();
-
-            foreach (var kvp in checkboxes)
-            {
-                if (kvp.Value?.Checked == true)
-                {
-                    selected.Add(kvp.Key);
-                }
-            }
-
-            // 아무것도 선택되지 않았으면 첫 번째 항목 선택
-            if (selected.Count == 0 && checkboxes.Count > 0)
-            {
-                var firstKey = checkboxes.Keys.First();
-                if (checkboxes[firstKey] != null)
-                {
-                    checkboxes[firstKey].Checked = true;
-                    selected.Add(firstKey);
-                }
-            }
-
-            return selected;
-        }
-
-        public int GetStrength()
-        {
-            return Strength;
-        }
-
-        public void SetRenderModeInfo(string infoText)
-        {
-            RenderModeInfo = infoText ?? "기본 모드";
-
-            if (renderModeLabel != null)
-            {
-                renderModeLabel.Text = RenderModeInfo;
-            }
-        }
-
-        public new void Show()
-        {
-            try
-            {
-                base.Show();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ 창 표시 오류: {ex.Message}");
-            }
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                // 컨트롤들 정리
-                strengthSlider?.Dispose();
-                confidenceSlider?.Dispose();
-                scrollableContainer?.Dispose();
-
-                foreach (var checkbox in checkboxes.Values)
-                {
-                    checkbox?.Dispose();
-                }
-                checkboxes.Clear();
-            }
-            base.Dispose(disposing);
+            if (rootForm.InvokeRequired) { rootForm.BeginInvoke(new Action(() => SetRunningState(isRunning))); return; }
+            startButton.Enabled = !isRunning;
+            stopButton.Enabled = isRunning;
         }
     }
-
-    /// <summary>
-    /// GUI 컨트롤러 클래스
-    /// </summary>
-    public class GUIController : MainWindow
-    {
-        public Signal StartCensoringSignal { get; }
-        public Signal StopCensoringSignal { get; }
-        public List<string> GetSelectedModelClasses()
-        {
-            var selectedKorean = GetSelectedTargets();
-
-            return selectedKorean
-                .Select(kor => classNameMap.TryGetValue(kor, out var eng) ? eng : null)
-                .Where(eng => !string.IsNullOrEmpty(eng))
-                .ToList();
-        }
-
-        // 한글 → 영어 클래스 이름 매핑
-        private static readonly Dictionary<string, string> classNameMap = new()
-        {
-            { "얼굴", "face" },
-            { "눈", "eye" },
-            { "손", "hand" },
-            { "가슴", "breast" },
-            { "보지", "vagina" },
-            { "팬티", "panty" },
-            { "가슴_옷", "chest_clothes" },
-            { "몸 전체", "body" },
-            { "교미", "intercourse" },
-            { "겨드랑이", "armpit" }
-        };
-        
-
-
-        public GUIController(Dictionary<string, object> config = null) : base(config)
-        {
-            StartCensoringSignal = new Signal();
-            StopCensoringSignal = new Signal();
-
-            StartCallback = () => StartCensoringSignal.Emit();
-            StopCallback = () => StopCensoringSignal.Emit();
-
-            TopMost = true;
-
-            Console.WriteLine("✅ Windows Forms GUI 컨트롤러 초기화 완료 (간단한 스크롤)");
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                StartCensoringSignal?.Emit();
-                StopCensoringSignal?.Emit();
-            }
-            base.Dispose(disposing);
-        }
-    }
-    
-    
 }

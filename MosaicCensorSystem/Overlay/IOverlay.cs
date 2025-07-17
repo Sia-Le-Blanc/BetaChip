@@ -4,53 +4,24 @@ using OpenCvSharp;
 namespace MosaicCensorSystem.Overlay
 {
     /// <summary>
-    /// 오버레이 윈도우 인터페이스
+    /// 오버레이 윈도우의 핵심 기능을 정의하는 인터페이스 (단순화 버전)
     /// </summary>
     public interface IOverlay : IDisposable
     {
         /// <summary>
-        /// 풀스크린 오버레이 표시
+        /// 오버레이 윈도우를 화면에 표시합니다.
         /// </summary>
-        bool Show();
+        void Show();
 
         /// <summary>
-        /// 오버레이 숨기기
+        /// 오버레이 윈도우를 화면에서 숨깁니다.
         /// </summary>
         void Hide();
 
         /// <summary>
-        /// 전체 화면 프레임 업데이트
+        /// 오버레이에 표시할 새 프레임(이미지)을 업데이트합니다.
         /// </summary>
+        /// <param name="processedFrame">화면에 그릴 Mat 이미지</param>
         void UpdateFrame(Mat processedFrame);
-
-        /// <summary>
-        /// 창이 표시되고 있는지 확인
-        /// </summary>
-        bool IsWindowVisible();
-
-        /// <summary>
-        /// 디버그 정보 표시 토글
-        /// </summary>
-        void ToggleDebugInfo();
-
-        /// <summary>
-        /// FPS 제한 설정
-        /// </summary>
-        void SetFpsLimit(int fps);
-
-        /// <summary>
-        /// 캡처 방지 기능 테스트
-        /// </summary>
-        bool TestCaptureProtection();
-
-        /// <summary>
-        /// 클릭 투과 기능 테스트
-        /// </summary>
-        bool TestClickThrough();
-
-        /// <summary>
-        /// 디버그 정보 표시 여부
-        /// </summary>
-        bool ShowDebugInfo { get; set; }
     }
 }
