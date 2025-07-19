@@ -1,12 +1,12 @@
 ; Inno Setup 스크립트 - 베타칩 후원자용
 ; 이 스크립트는 스티커 기능이 포함된 버전을 설치합니다.
-
 #define MyAppName "베타칩 - 후원자용"
 #define MyAppVersion "1.0-Patreon"
 #define MyAppPublisher "Sia"
 #define MyAppURL "https://github.com/Sia-Le-Blanc/BetaChip"
 #define MyAppExeName "MosaicCensorSystem.exe"
-#define MyBuildPath "bin\x64\Release\net8.0-windows"
+; ★★★ 빌드 경로를 후원자용으로 변경 ★★★
+#define MyBuildPath "bin\x64\ReleasePatreon\net8.0-windows"
 
 [Setup]
 ; 중요: AppId를 기존 버전과 다르게 설정하여 충돌을 방지합니다.

@@ -34,7 +34,6 @@ namespace MosaicCensorSystem.UI
         public GuiController(Form mainForm)
         {
             rootForm = mainForm;
-            // ★★★ 이름 변경 ★★★
             rootForm.Text = "베타칩";
             CreateGui();
         }
@@ -42,7 +41,6 @@ namespace MosaicCensorSystem.UI
         private void CreateGui()
         {
             rootForm.SuspendLayout();
-            // ★★★ 이름 변경 ★★★
             var titleLabel = new Label { Text = "베타칩", Font = new Font("Arial", 12, FontStyle.Bold), BackColor = Color.LightSkyBlue, BorderStyle = BorderStyle.FixedSingle, TextAlign = ContentAlignment.MiddleCenter, Height = 40, Dock = DockStyle.Top };
             var scrollableContainer = new ScrollablePanel { Dock = DockStyle.Fill };
             rootForm.Controls.Add(scrollableContainer);
@@ -93,9 +91,17 @@ namespace MosaicCensorSystem.UI
             enableDetectionCheckBox.CheckedChanged += (s, e) => DetectionToggled?.Invoke(enableDetectionCheckBox.Checked);
             var enableCensoringCheckBox = new CheckBox { Text = "🎨 검열 효과", Checked = true, Location = new Point(150, y), AutoSize = true };
             enableCensoringCheckBox.CheckedChanged += (s, e) => CensoringToggled?.Invoke(enableCensoringCheckBox.Checked);
+            
+            // --- ★★★ 스티커 체크박스를 조건부로 추가 ★★★ ---
+            #if PATREON_VERSION
             var enableStickerCheckBox = new CheckBox { Text = "✨ 스티커 표시", Checked = false, Location = new Point(290, y), AutoSize = true };
             enableStickerCheckBox.CheckedChanged += (s, e) => StickerToggled?.Invoke(enableStickerCheckBox.Checked);
             settingsGroup.Controls.AddRange(new Control[] { enableDetectionCheckBox, enableCensoringCheckBox, enableStickerCheckBox });
+            #else
+            settingsGroup.Controls.AddRange(new Control[] { enableDetectionCheckBox, enableCensoringCheckBox });
+            #endif
+            // --- ★★★ 수정 끝 ★★★ ---
+
             y += 30;
 
             var mosaicRadioButton = new RadioButton { Text = "🟦 모자이크", Checked = true, Location = new Point(10, y), AutoSize = true };

@@ -9,6 +9,11 @@
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
+    
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleasePatreon|x64'">
+    <Optimize>true</Optimize>
+    <DefineConstants>TRACE;WINDOWS;PATREON_VERSION</DefineConstants>
+  </PropertyGroup>
 
   <PropertyGroup>
     <ApplicationManifest>app.manifest</ApplicationManifest>

@@ -78,19 +78,28 @@ namespace MosaicCensorSystem.Detection
                 var trackedResults = tracker.Update(trackBoxes);
 
                 var finalDetections = new List<Detection>();
-                foreach (var detection in nmsDetections)
+                
+                // --- ★★★ 여기가 수정된 부분입니다 ★★★ ---
+                var remainingDetections = new List<Detection>(nmsDetections);
+
+                foreach (var track in trackedResults)
                 {
-                    var detRect = new Rect2d(detection.BBox[0], detection.BBox[1], detection.Width, detection.Height);
-                    var bestMatch = trackedResults.OrderBy(t => t.box.DistanceTo(detRect)).FirstOrDefault();
-                    
-                    // ★★★ 오류 수정: .Area를 직접 계산으로 변경 ★★★
-                    if ((bestMatch.box.Width * bestMatch.box.Height) > 0)
+                    // 현재 트랙과 가장 가까운 감지 결과 찾기
+                    var bestMatch = remainingDetections
+                        .Select(det => new { Detection = det, Distance = new Rect2d(det.BBox[0], det.BBox[1], det.Width, det.Height).DistanceTo(track.box) })
+                        .OrderBy(x => x.Distance)
+                        .FirstOrDefault();
+
+                    // IoU를 추가로 확인하여 더 정확하게 매칭 (선택적)
+                    if (bestMatch != null && bestMatch.Distance < 50) // 일정 거리 내에 있을 때만 매칭
                     {
-                        detection.TrackId = bestMatch.id;
-                        finalDetections.Add(detection);
-                        trackedResults.Remove(bestMatch);
+                        bestMatch.Detection.TrackId = track.id;
+                        finalDetections.Add(bestMatch.Detection);
+                        remainingDetections.Remove(bestMatch.Detection); // 매칭된 감지 결과는 목록에서 제거
                     }
                 }
+                // --- ★★★ 수정 끝 ★★★ ---
+
                 return finalDetections;
             }
             catch (Exception ex) { Console.WriteLine($"🚨 DetectObjects 오류: {ex.Message}"); return new List<Detection>(); }
@@ -200,8 +209,8 @@ namespace MosaicCensorSystem.Detection
     {
         public static double DistanceTo(this Rect2d r1, Rect2d r2)
         {
-            double dx = r1.X - r2.X;
-            double dy = r1.Y - r2.Y;
+            double dx = (r1.X + r1.Width / 2) - (r2.X + r2.Width / 2);
+            double dy = (r1.Y + r1.Height / 2) - (r2.Y + r2.Height / 2);
             return Math.Sqrt(dx * dx + dy * dy);
         }
     }
