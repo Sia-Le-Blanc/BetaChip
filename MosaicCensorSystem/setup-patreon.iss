@@ -5,7 +5,8 @@
 #define MyAppPublisher "Sia"
 #define MyAppURL "https://github.com/Sia-Le-Blanc/BetaChip"
 #define MyAppExeName "MosaicCensorSystem.exe"
-; ★★★ 빌드 경로를 후원자용으로 변경 ★★★
+;
+★★★ 빌드 경로를 후원자용으로 변경 ★★★
 #define MyBuildPath "bin\x64\ReleasePatreon\net8.0-windows"
 
 [Setup]
@@ -19,7 +20,8 @@ AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DisableProgramGroupPage=yes
-; 최종 설치 파일 이름 설정
+;
+최종 설치 파일 이름 설정
 OutputDir=.\install
 OutputBaseFilename=BetaChip-Patreon-Setup
 SetupIconFile=
@@ -35,11 +37,14 @@ Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; 중요: Source 경로는 이 스크립트 파일을 기준으로 합니다.
+;
+중요: Source 경로는 이 스크립트 파일을 기준으로 합니다.
 Source: "{#MyBuildPath}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#MyBuildPath}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#MyBuildPath}\*"; DestDir: "{app}";
+Flags: ignoreversion recursesubdirs createallsubdirs
 ; 스티커와 모델 파일이 포함된 Resources 폴더 전체를 복사합니다.
-Source: ".\Resources\*"; DestDir: "{app}\Resources"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: ".\Resources\*"; DestDir: "{app}\Resources";
+Flags: ignoreversion recursesubdirs createallsubdirs
 
 
 [Icons]
@@ -47,4 +52,5 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}";
+Flags: nowait postinstall skipifsilent

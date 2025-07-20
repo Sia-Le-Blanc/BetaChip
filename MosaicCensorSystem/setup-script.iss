@@ -1,6 +1,5 @@
 ; Inno Setup 스크립트 예제
 ; 이 스크립트는 MosaicCensorSystem을 위한 설치 프로그램을 생성합니다.
-
 #define MyAppName "Mosaic Censor System"
 #define MyAppVersion "1.0"
 #define MyAppPublisher "Sia"
@@ -37,8 +36,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; 중요: Source 경로는 이 스크립트 파일을 기준으로 합니다.
 Source: "{#MyBuildPath}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#MyBuildPath}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; TODO: 만약 Resources 폴더가 빌드 경로에 없다면 아래 줄의 주석을 해제하고 경로를 맞추세요.
-; Source: ".\Resources\*"; DestDir: "{app}\Resources"; Flags: ignoreversion recursesubdirs createallsubdirs
+; ONNX 모델 파일(best.onnx)을 포함한 Resources 폴더를 정확히 복사하도록 이 줄의 주석을 해제하고 사용하세요.
+Source: ".\Resources\*"; DestDir: "{app}\Resources"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
