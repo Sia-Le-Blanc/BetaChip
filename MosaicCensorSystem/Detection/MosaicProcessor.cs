@@ -48,15 +48,47 @@ namespace MosaicCensorSystem.Detection
 
         private void LoadModel(string modelPath)
         {
-            if (!File.Exists(modelPath)) { Console.WriteLine($"❌ 모델 파일 없음: {modelPath}"); return; }
+            if (!File.Exists(modelPath))
+            {
+                Console.WriteLine($"❌ 모델 파일 없음: {modelPath}");
+                return;
+            }
             try
             {
                 var sessionOptions = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
-                sessionOptions.AppendExecutionProvider_CPU();
+
+                // 💡 GPU 우선 시도 (CUDA, DirectML 순서), 실패 시 CPU로 자동 전환
+                try
+                {
+                    Console.WriteLine("🚀 CUDA 실행 프로바이더(NVIDIA GPU)를 시도합니다...");
+                    sessionOptions.AppendExecutionProvider_CUDA();
+                    Console.WriteLine("✅ CUDA가 성공적으로 설정되었습니다.");
+                }
+                catch (Exception)
+                {
+                    Console.WriteLine("⚠️ CUDA 사용 불가. DirectML(Windows 기본 GPU 가속)을 시도합니다...");
+                    try
+                    {
+                        sessionOptions.AppendExecutionProvider_DML();
+                        Console.WriteLine("✅ DirectML이 성공적으로 설정되었습니다.");
+                    }
+                    catch (Exception)
+                    {
+                        Console.WriteLine("⚠️ GPU 가속 사용 불가. CPU로 실행합니다.");
+                        sessionOptions.AppendExecutionProvider_CPU();
+                    }
+                }
+
                 model = new InferenceSession(modelPath, sessionOptions);
                 Console.WriteLine($"✅ 모델 로드 성공: {modelPath}");
+                // 현재 사용 중인 실행 장치를 로그에 출력합니다.
+                Console.WriteLine($"📈 현재 실행 장치: {string.Join(", ", model.Providers)}");
             }
-            catch (Exception ex) { Console.WriteLine($"❌ 모델 로드 실패: {ex.Message}"); model = null; }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ 모델 로드 중 심각한 오류 발생: {ex.Message}");
+                model = null;
+            }
         }
 
         public bool IsModelLoaded() => model != null;
