@@ -25,7 +25,8 @@ namespace MosaicCensorSystem
 
         private readonly GuiController ui;
         private readonly ScreenCapturer capturer;
-        private readonly MosaicProcessor processor;
+        // private readonly MosaicProcessor processor; // 기존
+        public readonly MosaicProcessor processor; // ★★★ public으로 변경 ★★★
         private readonly FullscreenOverlay overlay;
         private readonly Random random = new Random();
 

@@ -29,6 +29,7 @@ namespace MosaicCensorSystem.UI
         private TextBox logTextBox;
         private Button startButton;
         private Button stopButton;
+        private Label gpuStatusLabel; // ★★★ 추가된 GPU 상태 레이블 ★★★
         private readonly Dictionary<string, CheckBox> targetCheckBoxes = new Dictionary<string, CheckBox>();
 
         public GuiController(Form mainForm)
@@ -55,6 +56,11 @@ namespace MosaicCensorSystem.UI
             statusLabel = new Label { Text = "⭕ 시스템 대기 중", Font = new Font("Arial", 12, FontStyle.Bold), ForeColor = Color.Red, Location = new Point(10, y), AutoSize = true };
             parent.Controls.Add(statusLabel);
             y += 40;
+
+            // ★★★ GPU 상태 레이블 추가 ★★★
+            gpuStatusLabel = new Label { Text = "실행 모드: 로딩 중...", Font = new Font("Arial", 10), Location = new Point(10, y), AutoSize = true };
+            parent.Controls.Add(gpuStatusLabel);
+            y += 30; // 레이블 높이만큼 y 좌표 증가
 
             var controlGroup = new GroupBox { Text = "🎮 제어", Location = new Point(10, y), Size = new Size(460, 80) };
             startButton = new Button { Text = "🚀 시작", BackColor = Color.DarkGreen, ForeColor = Color.White, Font = new Font("Arial", 10, FontStyle.Bold), Size = new Size(120, 40), Location = new Point(20, 25) };
@@ -92,7 +98,6 @@ namespace MosaicCensorSystem.UI
             var enableCensoringCheckBox = new CheckBox { Text = "🎨 검열 효과", Checked = true, Location = new Point(150, y), AutoSize = true };
             enableCensoringCheckBox.CheckedChanged += (s, e) => CensoringToggled?.Invoke(enableCensoringCheckBox.Checked);
             
-            // --- ★★★ 스티커 체크박스를 조건부로 추가 ★★★ ---
             #if PATREON_VERSION
             var enableStickerCheckBox = new CheckBox { Text = "✨ 스티커 표시", Checked = false, Location = new Point(290, y), AutoSize = true };
             enableStickerCheckBox.CheckedChanged += (s, e) => StickerToggled?.Invoke(enableStickerCheckBox.Checked);
@@ -100,7 +105,6 @@ namespace MosaicCensorSystem.UI
             #else
             settingsGroup.Controls.AddRange(new Control[] { enableDetectionCheckBox, enableCensoringCheckBox });
             #endif
-            // --- ★★★ 수정 끝 ★★★ ---
 
             y += 30;
 
@@ -145,6 +149,29 @@ namespace MosaicCensorSystem.UI
 
         public void UpdateStatus(string message, Color color) { if (rootForm.InvokeRequired) { rootForm.BeginInvoke(new Action(() => UpdateStatus(message, color))); return; } statusLabel.Text = message; statusLabel.ForeColor = color; }
         public void LogMessage(string message) { if (rootForm.InvokeRequired) { rootForm.BeginInvoke(new Action(() => LogMessage(message))); return; } logTextBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}"); logTextBox.SelectionStart = logTextBox.Text.Length; logTextBox.ScrollToCaret(); }
-        public void SetRunningState(bool isRunning) { if (rootForm.InvokeRequired) { rootForm.BeginInvoke(new Action(() => SetRunningState(isRunning))); return; } startButton.Enabled = !isRunning; stopButton.Enabled = isRunning; }
+        public void SetRunningState(bool isRunning) { if (rootForm.InvokeRequired) { rootForm.BeginInvoke(new Action(() => SetRunningState(isRunning))); return; return; } startButton.Enabled = !isRunning; stopButton.Enabled = isRunning; }
+
+        // ★★★ 추가된 GPU 상태 업데이트 메서드 ★★★
+        public void UpdateGpuStatus(string status)
+        {
+            if (rootForm.InvokeRequired)
+            {
+                rootForm.BeginInvoke(new Action(() => UpdateGpuStatus(status)));
+                return;
+            }
+            gpuStatusLabel.Text = $"실행 모드: {status}";
+            if (status.Contains("GPU"))
+            {
+                gpuStatusLabel.ForeColor = Color.Green;
+            }
+            else if (status.Contains("CPU"))
+            {
+                gpuStatusLabel.ForeColor = Color.OrangeRed;
+            }
+            else
+            {
+                gpuStatusLabel.ForeColor = Color.Black; // 기본 색상
+            }
+        }
     }
 }

@@ -33,6 +33,8 @@ namespace MosaicCensorSystem.Detection
         private CensorType currentCensorType = CensorType.Mosaic;
         private int strength = 20;
 
+        public string CurrentExecutionProvider { get; private set; } = "CPU"; // 기본값은 CPU
+
         private static readonly Dictionary<int, string> ClassNames = new()
         {
             {0, "얼굴"}, {1, "가슴"}, {2, "겨드랑이"}, {3, "보지"}, {4, "발"},
@@ -56,12 +58,14 @@ namespace MosaicCensorSystem.Detection
             try
             {
                 var sessionOptions = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
+                string detectedProvider = "CPU"; // 기본값
 
                 // 💡 GPU 우선 시도 (CUDA, DirectML 순서), 실패 시 CPU로 자동 전환
                 try
                 {
                     Console.WriteLine("🚀 CUDA 실행 프로바이더(NVIDIA GPU)를 시도합니다...");
                     sessionOptions.AppendExecutionProvider_CUDA();
+                    detectedProvider = "CUDA (GPU)";
                     Console.WriteLine("✅ CUDA가 성공적으로 설정되었습니다.");
                 }
                 catch (Exception)
@@ -70,24 +74,27 @@ namespace MosaicCensorSystem.Detection
                     try
                     {
                         sessionOptions.AppendExecutionProvider_DML();
+                        detectedProvider = "DirectML (GPU)";
                         Console.WriteLine("✅ DirectML이 성공적으로 설정되었습니다.");
                     }
                     catch (Exception)
                     {
                         Console.WriteLine("⚠️ GPU 가속 사용 불가. CPU로 실행합니다.");
                         sessionOptions.AppendExecutionProvider_CPU();
+                        detectedProvider = "CPU";
                     }
                 }
 
                 model = new InferenceSession(modelPath, sessionOptions);
                 Console.WriteLine($"✅ 모델 로드 성공: {modelPath}");
-                // 현재 사용 중인 실행 장치를 로그에 출력합니다.
-                Console.WriteLine($"📈 현재 실행 장치: {string.Join(", ", model.Providers)}");
+                CurrentExecutionProvider = detectedProvider;
+                Console.WriteLine($"📈 현재 실행 장치: {CurrentExecutionProvider}");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"❌ 모델 로드 중 심각한 오류 발생: {ex.Message}");
                 model = null;
+                CurrentExecutionProvider = "로드 실패 (CPU)";
             }
         }
 
@@ -111,26 +118,22 @@ namespace MosaicCensorSystem.Detection
 
                 var finalDetections = new List<Detection>();
                 
-                // --- ★★★ 여기가 수정된 부분입니다 ★★★ ---
                 var remainingDetections = new List<Detection>(nmsDetections);
 
                 foreach (var track in trackedResults)
                 {
-                    // 현재 트랙과 가장 가까운 감지 결과 찾기
                     var bestMatch = remainingDetections
                         .Select(det => new { Detection = det, Distance = new Rect2d(det.BBox[0], det.BBox[1], det.Width, det.Height).DistanceTo(track.box) })
                         .OrderBy(x => x.Distance)
                         .FirstOrDefault();
 
-                    // IoU를 추가로 확인하여 더 정확하게 매칭 (선택적)
-                    if (bestMatch != null && bestMatch.Distance < 50) // 일정 거리 내에 있을 때만 매칭
+                    if (bestMatch != null && bestMatch.Distance < 50)
                     {
                         bestMatch.Detection.TrackId = track.id;
                         finalDetections.Add(bestMatch.Detection);
-                        remainingDetections.Remove(bestMatch.Detection); // 매칭된 감지 결과는 목록에서 제거
+                        remainingDetections.Remove(bestMatch.Detection);
                     }
                 }
-                // --- ★★★ 수정 끝 ★★★ ---
 
                 return finalDetections;
             }

@@ -20,6 +20,9 @@ namespace MosaicCensorSystem
             censorService = new CensorService(uiController);
             ConnectEvents();
             uiController.LogMessage("✅ 시스템 초기화 완료. 시작 버튼을 누르세요.");
+
+            // ★★★ 초기 GPU 상태 업데이트 호출 ★★★
+            uiController.UpdateGpuStatus(censorService.processor.CurrentExecutionProvider);
         }
 
         private void ConnectEvents()
