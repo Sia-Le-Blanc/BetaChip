@@ -91,8 +91,8 @@ namespace MosaicCensorSystem.Capture
                     if (memoryDC != IntPtr.Zero) DeleteObject(memoryDC);
                     if (desktopDC != IntPtr.Zero) ReleaseDC(GetDesktopWindow(), desktopDC);
                 }
-                // 캡처 간격을 줘서 CPU 사용률을 낮춤 (약 60FPS)
-                Thread.Sleep(16); 
+                // 캡처 간격을 줘서 CPU 사용률을 낮춤 (약 60FPS) - ★★★ 이 부분을 제거합니다. ★★★
+                // Thread.Sleep(16);
             }
         }
 

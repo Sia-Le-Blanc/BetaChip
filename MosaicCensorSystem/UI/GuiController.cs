@@ -88,7 +88,8 @@ namespace MosaicCensorSystem.UI
         {
             int y = 25;
             var fpsValueLabel = new Label { Text = "15", Location = new Point(390, y), AutoSize = true };
-            var fpsSlider = new TrackBar { Minimum = 5, Maximum = 60, Value = 15, TickFrequency = 5, Location = new Point(100, y - 5), Size = new Size(280, 45) };
+            // ★★★ Maximum 값을 60에서 240으로 변경 ★★★
+            var fpsSlider = new TrackBar { Minimum = 5, Maximum = 240, Value = 15, TickFrequency = 5, Location = new Point(100, y - 5), Size = new Size(280, 45) };
             fpsSlider.ValueChanged += (s, e) => { fpsValueLabel.Text = fpsSlider.Value.ToString(); FpsChanged?.Invoke(fpsSlider.Value); };
             settingsGroup.Controls.AddRange(new Control[] { new Label { Text = "목표 FPS:", Location = new Point(10, y), AutoSize = true }, fpsSlider, fpsValueLabel });
             y += 40;

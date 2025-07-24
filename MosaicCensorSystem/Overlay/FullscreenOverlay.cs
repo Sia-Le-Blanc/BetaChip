@@ -77,6 +77,12 @@ namespace MosaicCensorSystem.Overlay
             base.OnPaint(e);
             lock (bitmapLock)
             {
+                // ★★★ 추가된 코드: 배경을 TransparencyKey 색상으로 지웁니다. ★★★
+                using (SolidBrush brush = new SolidBrush(this.TransparencyKey))
+                {
+                    e.Graphics.FillRectangle(brush, this.ClientRectangle);
+                }
+
                 if (currentBitmap != null)
                 {
                     e.Graphics.DrawImage(currentBitmap, this.ClientRectangle);
