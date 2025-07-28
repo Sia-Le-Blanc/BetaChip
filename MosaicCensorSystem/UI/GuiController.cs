@@ -150,7 +150,7 @@ namespace MosaicCensorSystem.UI
 
         public void UpdateStatus(string message, Color color) { if (rootForm.InvokeRequired) { rootForm.BeginInvoke(new Action(() => UpdateStatus(message, color))); return; } statusLabel.Text = message; statusLabel.ForeColor = color; }
         public void LogMessage(string message) { if (rootForm.InvokeRequired) { rootForm.BeginInvoke(new Action(() => LogMessage(message))); return; } logTextBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}"); logTextBox.SelectionStart = logTextBox.Text.Length; logTextBox.ScrollToCaret(); }
-        public void SetRunningState(bool isRunning) { if (rootForm.InvokeRequired) { rootForm.BeginInvoke(new Action(() => SetRunningState(isRunning))); return; return; } startButton.Enabled = !isRunning; stopButton.Enabled = isRunning; }
+        public void SetRunningState(bool isRunning) { if (rootForm.InvokeRequired) { rootForm.BeginInvoke(new Action(() => SetRunningState(isRunning))); return;} startButton.Enabled = !isRunning; stopButton.Enabled = isRunning; }
 
         // ★★★ 추가된 GPU 상태 업데이트 메서드 ★★★
         public void UpdateGpuStatus(string status)
