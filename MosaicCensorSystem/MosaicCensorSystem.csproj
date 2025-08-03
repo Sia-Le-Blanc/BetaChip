@@ -8,37 +8,104 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    
+    <!-- NETSDK1206 경고 무시 (macOS RID 관련) -->
+    <NoWarn>$(NoWarn);NETSDK1206</NoWarn>
   </PropertyGroup>
 
+  <!-- 후원자 빌드 조건부 설정 (P=true로 축약) -->
+  <PropertyGroup Condition="'$(P)' == 'true'">
+    <DefineConstants>$(DefineConstants);PATREON_VERSION</DefineConstants>
+    <AssemblyTitle>Mosaic Censor System - Patreon Edition</AssemblyTitle>
+    <OutputPath>bin\$(Configuration)\Patreon\</OutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(P)' != 'true'">
+    <AssemblyTitle>Mosaic Censor System - Free Edition</AssemblyTitle>
+    <OutputPath>bin\$(Configuration)\Free\</OutputPath>
+  </PropertyGroup>
+
+  <!-- 기존 ReleasePatreon 구성도 유지 -->
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleasePatreon|x64'">
     <Optimize>true</Optimize>
     <DefineConstants>TRACE;WINDOWS;PATREON_VERSION</DefineConstants>
+    <OutputPath>bin\x64\ReleasePatreon\net8.0-windows\</OutputPath>
   </PropertyGroup>
 
   <PropertyGroup>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
+  <!-- NuGet 패키지 참조 -->
   <ItemGroup>
     <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.15.1" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime.Extensions" Version="0.13.0" />
-
     <PackageReference Include="OpenCvSharp4" Version="4.9.0.20240103" />
     <PackageReference Include="OpenCvSharp4.Extensions" Version="4.9.0.20240103" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.9.0.20240103" />
   </ItemGroup>
 
+  <!-- 리소스 파일 설정 (다국어 지원) -->
+  <ItemGroup>
+    <EmbeddedResource Update="Properties\Strings.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Strings.Designer.cs</LastGenOutput>
+      <CustomToolNamespace>MosaicCensorSystem.Properties</CustomToolNamespace>
+    </EmbeddedResource>
+    <EmbeddedResource Update="Properties\Strings.en.resx">
+      <DependentUpon>Strings.resx</DependentUpon>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- ONNX 모델 파일 -->
   <ItemGroup>
     <None Update="Resources\best.onnx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 
-  <ItemGroup Condition="'$(DefineConstants)' == 'TRACE;WINDOWS;PATREON_VERSION'">
-    <Content Include="Resources\Loser\**">
+  <!-- 후원자 전용: 스티커 파일들 (조건 수정) -->
+  <ItemGroup Condition="'$(P)' == 'true'">
+    <Content Include="Resources\Loser\**\*">
+      <Link>Stickers\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Resources\Stickers\**\*" Condition="Exists('Resources\Stickers')">
       <Link>Stickers\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
+  <!-- 무료 버전: 스티커 폴더는 제외하고 더미 파일만 복사 -->
+  <ItemGroup Condition="'$(P)' != 'true'">
+    <Content Include="Resources\Stickers\readme.txt" Condition="Exists('Resources\Stickers\readme.txt')">
+      <Link>Stickers\readme.txt</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- 빌드 후 작업: 버전 정보 출력 -->
+  <Target Name="ShowBuildInfo" AfterTargets="Build">
+    <Message Text="====================================" Importance="high" />
+    <Message Text="빌드 완료!" Importance="high" />
+    <Message Text="버전: $(AssemblyTitle)" Importance="high" />
+    <Message Text="출력 경로: $(OutputPath)" Importance="high" />
+    <Message Text="후원자 기능: $(P)" Importance="high" />
+    <Message Text="스티커 폴더 포함: $(P)" Importance="high" />
+    <Message Text="====================================" Importance="high" />
+  </Target>
+
+  <!-- 디버깅용: 스티커 파일 복사 상태 확인 (안전한 버전) -->
+  <Target Name="DebugStickerCopy" AfterTargets="ShowBuildInfo" Condition="'$(P)' == 'true'">
+    <Message Text="🎯 후원자 빌드: 스티커 파일 복사 중..." Importance="high" />
+    <ItemGroup>
+      <LoserFiles Include="Resources\Loser\**\*" />
+      <StickerFiles Include="Resources\Stickers\**\*" />
+    </ItemGroup>
+    <Message Text="📁 Loser 폴더 파일 수: @(LoserFiles->Count())" Importance="high" />
+    <Message Text="📁 Stickers 폴더 파일 수: @(StickerFiles->Count())" Importance="high" />
+    <Message Text="📂 복사 대상: Resources\Loser\**\* → Stickers\" Importance="high" />
+    <Message Text="📂 복사 대상: Resources\Stickers\**\* → Stickers\" Importance="high" />
+  </Target>
 
 </Project>
