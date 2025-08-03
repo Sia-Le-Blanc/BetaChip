@@ -28,12 +28,18 @@ namespace MosaicCensorSystem.Detection
         private readonly float[] inputBuffer = new float[1 * 3 * 640 * 640];
         private readonly SortTracker tracker = new SortTracker();
 
+        // 최적화를 위해 추가된 멤버 변수
+        private readonly Mat _resizedMat = new Mat();
+        private readonly Mat _paddedMat = new Mat();
+        // _channels 필드에서 readonly 키워드 제거
+        private Mat[] _channels = new Mat[3];
+
         public float ConfThreshold { get; set; } = 0.3f;
         public List<string> Targets { get; private set; } = new List<string> { "얼굴", "가슴" };
         private CensorType currentCensorType = CensorType.Mosaic;
         private int strength = 20;
 
-        public string CurrentExecutionProvider { get; private set; } = "CPU"; // 기본값은 CPU
+        public string CurrentExecutionProvider { get; private set; } = "CPU";
 
         private static readonly Dictionary<int, string> ClassNames = new()
         {
@@ -58,9 +64,7 @@ namespace MosaicCensorSystem.Detection
             try
             {
                 var sessionOptions = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
-                string detectedProvider = "CPU"; // 기본값
-
-                // 💡 GPU 우선 시도 (CUDA, DirectML 순서), 실패 시 CPU로 자동 전환
+                string detectedProvider = "CPU";
                 try
                 {
                     Console.WriteLine("🚀 CUDA 실행 프로바이더(NVIDIA GPU)를 시도합니다...");
@@ -117,7 +121,6 @@ namespace MosaicCensorSystem.Detection
                 var trackedResults = tracker.Update(trackBoxes);
 
                 var finalDetections = new List<Detection>();
-                
                 var remainingDetections = new List<Detection>(nmsDetections);
 
                 foreach (var track in trackedResults)
@@ -134,7 +137,6 @@ namespace MosaicCensorSystem.Detection
                         remainingDetections.Remove(bestMatch.Detection);
                     }
                 }
-
                 return finalDetections;
             }
             catch (Exception ex) { Console.WriteLine($"🚨 DetectObjects 오류: {ex.Message}"); return new List<Detection>(); }
@@ -148,21 +150,17 @@ namespace MosaicCensorSystem.Detection
             int newHeight = (int)(frame.Height * scale);
             int padX = (TargetSize - newWidth) / 2;
             int padY = (TargetSize - newHeight) / 2;
-
-            using var resized = new Mat();
-            Cv2.Resize(frame, resized, new OpenCvSharp.Size(newWidth, newHeight), interpolation: InterpolationFlags.Linear);
-
-            using var padded = new Mat();
-            Cv2.CopyMakeBorder(resized, padded, padY, TargetSize - newHeight - padY, padX, TargetSize - newWidth - padX, BorderTypes.Constant, new Scalar(114, 114, 114));
             
-            padded.ConvertTo(padded, MatType.CV_32F, 1.0 / 255.0);
-            Cv2.Split(padded, out Mat[] channels);
+            Cv2.Resize(frame, _resizedMat, new OpenCvSharp.Size(newWidth, newHeight), interpolation: InterpolationFlags.Linear);
+            Cv2.CopyMakeBorder(_resizedMat, _paddedMat, padY, TargetSize - newHeight - padY, padX, TargetSize - newWidth - padX, BorderTypes.Constant, new Scalar(114, 114, 114));
             
-            Marshal.Copy(channels[2].Data, buffer, 0, TargetSize * TargetSize);
-            Marshal.Copy(channels[1].Data, buffer, TargetSize * TargetSize, TargetSize * TargetSize);
-            Marshal.Copy(channels[0].Data, buffer, 2 * TargetSize * TargetSize, TargetSize * TargetSize);
+            _paddedMat.ConvertTo(_paddedMat, MatType.CV_32F, 1.0 / 255.0);
+            Cv2.Split(_paddedMat, out _channels);
+            
+            Marshal.Copy(_channels[2].Data, buffer, 0, TargetSize * TargetSize);
+            Marshal.Copy(_channels[1].Data, buffer, TargetSize * TargetSize, TargetSize * TargetSize);
+            Marshal.Copy(_channels[0].Data, buffer, 2 * TargetSize * TargetSize, TargetSize * TargetSize);
 
-            foreach (var ch in channels) ch.Dispose();
             return (scale, padX, padY);
         }
 
@@ -231,13 +229,33 @@ namespace MosaicCensorSystem.Detection
                 Cv2.Resize(region, small, new OpenCvSharp.Size(smallW, smallH), interpolation: InterpolationFlags.Linear);
                 Cv2.Resize(small, region, new OpenCvSharp.Size(w, h), interpolation: InterpolationFlags.Nearest);
             }
-            else { int kernelSize = Math.Max(3, strength + 1); if (kernelSize % 2 == 0) kernelSize++; Cv2.GaussianBlur(region, region, new OpenCvSharp.Size(kernelSize, kernelSize), 0); }
+            else 
+            { 
+                int kernelSize = Math.Max(3, strength + 1); 
+                if (kernelSize % 2 == 0) kernelSize++; 
+                Cv2.GaussianBlur(region, region, new OpenCvSharp.Size(kernelSize, kernelSize), 0); 
+            }
         }
 
         public void SetTargets(List<string> targets) => Targets = targets ?? new List<string>();
         public void SetStrength(int strength) => this.strength = Math.Max(5, Math.Min(50, strength));
         public void SetCensorType(CensorType censorType) => this.currentCensorType = censorType;
-        public void Dispose() { model?.Dispose(); model = null; }
+
+        public void Dispose()
+        {
+            model?.Dispose();
+            model = null;
+
+            _resizedMat?.Dispose();
+            _paddedMat?.Dispose();
+            if (_channels != null)
+            {
+                foreach (var c in _channels)
+                {
+                    c?.Dispose();
+                }
+            }
+        }
     }
     
     public static class Rect2dExtensions

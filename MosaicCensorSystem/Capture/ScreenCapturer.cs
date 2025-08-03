@@ -1,113 +1,119 @@
-#nullable disable
 using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Windows.Forms;
 using OpenCvSharp;
-using OpenCvSharp.Extensions;
 
 namespace MosaicCensorSystem.Capture
 {
-    /// <summary>
-    /// 백그라운드 스레드를 사용하여 화면을 지속적으로 캡처하는 클래스 (안정화 버전)
-    /// </summary>
-    public class ScreenCapturer : IDisposable
+    public class ScreenCapture : IDisposable
     {
-        #region Windows API
+        #region Win32 API P/Invoke
+        // CreateDIBSection 함수와 BITMAPINFO 구조체를 추가합니다.
+        [StructLayout(LayoutKind.Sequential)]
+        public struct BITMAPINFO
+        {
+            public BITMAPINFOHEADER bmiHeader;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
+            public RGBQUAD[] bmiColors;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct BITMAPINFOHEADER
+        {
+            public uint biSize;
+            public int biWidth;
+            public int biHeight;
+            public ushort biPlanes;
+            public ushort biBitCount;
+            public uint biCompression;
+            public uint biSizeImage;
+            public int biXPelsPerMeter;
+            public int biYPelsPerMeter;
+            public uint biClrUsed;
+            public uint biClrImportant;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RGBQUAD
+        {
+            public byte rgbBlue;
+            public byte rgbGreen;
+            public byte rgbRed;
+            public byte rgbReserved;
+        }
+
+        [DllImport("gdi32.dll")]
+        private static extern IntPtr CreateDIBSection(IntPtr hdc, [In] ref BITMAPINFO pbmi, uint pila, out IntPtr ppvBits, IntPtr hSection, uint dwOffset);
+        
+        // --- 기존 함수들 ---
         [DllImport("user32.dll")] private static extern IntPtr GetDesktopWindow();
         [DllImport("user32.dll")] private static extern IntPtr GetWindowDC(IntPtr hWnd);
-        [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
-        [DllImport("gdi32.dll")] private static extern bool BitBlt(IntPtr hDest, int nXDest, int nYDest, int nWidth, int nHeight, IntPtr hSrc, int nXSrc, int nYSrc, int dwRop);
-        [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleBitmap(IntPtr hDC, int nWidth, int nHeight);
         [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr hDC);
-        [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr hObject);
         [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr hDC, IntPtr hObject);
+        [DllImport("gdi32.dll")] private static extern bool BitBlt(IntPtr hObjectHDC, int nXDest, int nYDest, int nWidth, int nHeight, IntPtr hObjSourceHDC, int nXSrc, int nYSrc, int dwRop);
+        [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr hObject);
+        [DllImport("gdi32.dll")] private static extern bool DeleteDC(IntPtr hDC);
+        [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
         private const int SRCCOPY = 0x00CC0020;
+        private const int BI_RGB = 0;
         #endregion
 
-        private readonly int screenWidth;
-        private readonly int screenHeight;
-        private readonly int screenLeft;
-        private readonly int screenTop;
+        private readonly int width;
+        private readonly int height;
+        private IntPtr hDesktopWnd;
+        private IntPtr hDesktopDC;
+        private IntPtr hMemoryDC;
+        private IntPtr hBitmap;
+        private IntPtr hOldBitmap;
+        private IntPtr pPixelData; // 픽셀 데이터 메모리 포인터
+        private bool disposed = false;
 
-        private Mat currentFrame;
-        private readonly object frameLock = new object();
-        private Thread captureThread;
-        private volatile bool isRunning;
-
-        public ScreenCapturer()
+        public ScreenCapture()
         {
-            screenLeft = SystemInformation.VirtualScreen.Left;
-            screenTop = SystemInformation.VirtualScreen.Top;
-            screenWidth = SystemInformation.VirtualScreen.Width;
-            screenHeight = SystemInformation.VirtualScreen.Height;
-            currentFrame = new Mat(screenHeight, screenWidth, MatType.CV_8UC3);
-        }
+            Rectangle screenBounds = Screen.PrimaryScreen.Bounds;
+            width = screenBounds.Width;
+            height = screenBounds.Height;
 
-        public void StartCapture()
-        {
-            if (isRunning) return;
-            isRunning = true;
-            captureThread = new Thread(CaptureThreadLoop) { IsBackground = true, Name = "ScreenCaptureThread" };
-            captureThread.Start();
-        }
+            hDesktopWnd = GetDesktopWindow();
+            hDesktopDC = GetWindowDC(hDesktopWnd);
+            hMemoryDC = CreateCompatibleDC(hDesktopDC);
 
-        public void StopCapture()
-        {
-            isRunning = false;
-            captureThread?.Join(500);
-        }
+            // CreateDIBSection을 사용하기 위한 BITMAPINFO 설정
+            var bmi = new BITMAPINFO();
+            bmi.bmiHeader.biSize = (uint)Marshal.SizeOf(typeof(BITMAPINFOHEADER));
+            bmi.bmiHeader.biWidth = width;
+            bmi.bmiHeader.biHeight = -height; // Top-down DIB
+            bmi.bmiHeader.biPlanes = 1;
+            bmi.bmiHeader.biBitCount = 32; // 32비트 (BGRA)
+            bmi.bmiHeader.biCompression = BI_RGB;
 
-        private void CaptureThreadLoop()
-        {
-            while (isRunning)
-            {
-                IntPtr desktopDC = IntPtr.Zero, memoryDC = IntPtr.Zero, hBitmap = IntPtr.Zero, oldBitmap = IntPtr.Zero;
-                try
-                {
-                    desktopDC = GetWindowDC(GetDesktopWindow());
-                    memoryDC = CreateCompatibleDC(desktopDC);
-                    hBitmap = CreateCompatibleBitmap(desktopDC, screenWidth, screenHeight);
-                    oldBitmap = SelectObject(memoryDC, hBitmap);
-
-                    BitBlt(memoryDC, 0, 0, screenWidth, screenHeight, desktopDC, screenLeft, screenTop, SRCCOPY);
-                    
-                    using var bmp = Image.FromHbitmap(hBitmap);
-                    using Mat newFrame = BitmapConverter.ToMat(bmp);
-                    
-                    lock (frameLock)
-                    {
-                        if(newFrame.Channels() == 4)
-                            Cv2.CvtColor(newFrame, currentFrame, ColorConversionCodes.BGRA2BGR);
-                        else
-                            newFrame.CopyTo(currentFrame);
-                    }
-                }
-                finally
-                {
-                    if (oldBitmap != IntPtr.Zero) SelectObject(memoryDC, oldBitmap);
-                    if (hBitmap != IntPtr.Zero) DeleteObject(hBitmap);
-                    if (memoryDC != IntPtr.Zero) DeleteObject(memoryDC);
-                    if (desktopDC != IntPtr.Zero) ReleaseDC(GetDesktopWindow(), desktopDC);
-                }
-                // 캡처 간격을 줘서 CPU 사용률을 낮춤 (약 60FPS) - ★★★ 이 부분을 제거합니다. ★★★
-                // Thread.Sleep(16);
-            }
+            // CreateCompatibleBitmap 대신 CreateDIBSection을 사용해 pPixelData 포인터를 직접 얻습니다.
+            hBitmap = CreateDIBSection(hMemoryDC, ref bmi, 0, out pPixelData, IntPtr.Zero, 0);
+            hOldBitmap = SelectObject(hMemoryDC, hBitmap);
         }
 
         public Mat GetFrame()
         {
-            lock (frameLock)
-            {
-                return currentFrame.Clone();
-            }
+            if (disposed) return null;
+            
+            BitBlt(hMemoryDC, 0, 0, width, height, hDesktopDC, 0, 0, SRCCOPY);
+
+            // Bitmap 객체 변환 없이, 메모리 포인터(pPixelData)로 직접 Mat 객체를 생성합니다.
+            // MatType.CV_8UC4는 8비트 부호없는 4채널(BGRA) 이미지를 의미합니다.
+            return new Mat(height, width, MatType.CV_8UC4, pPixelData);
         }
 
         public void Dispose()
         {
-            StopCapture();
-            currentFrame?.Dispose();
+            if (!disposed)
+            {
+                SelectObject(hMemoryDC, hOldBitmap);
+                DeleteObject(hBitmap);
+                DeleteDC(hMemoryDC);
+                ReleaseDC(hDesktopWnd, hDesktopDC);
+                disposed = true;
+            }
         }
     }
 }

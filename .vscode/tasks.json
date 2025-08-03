@@ -1,0 +1,36 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build-dxgi-dll",
+      "type": "shell",
+      "command": "cl",
+      "args": [
+        "/LD",
+        "/EHsc",
+        "capture_dxgi.cpp",
+        "user32.lib",
+        "gdi32.lib",
+        "d3d11.lib",
+        "dxgi.lib",
+        "/Fe:capture_dxgi.dll",
+        "&&",
+        "copy",
+        "capture_dxgi.dll",
+        "..\\MosaicCensorSystem\\bin\\Debug\\net8.0-windows\\capture_dxgi.dll"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/MosaicCensorSystem/Native",
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/d", "/c"]
+        }
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -16,7 +16,6 @@ namespace MosaicCensorSystem
 {
     public class CensorService : IDisposable
     {
-        // ★★★ 스티커 정보 저장을 위한 내부 클래스 ★★★
         private class StickerInfo
         {
             public Mat Sticker { get; set; }
@@ -24,9 +23,8 @@ namespace MosaicCensorSystem
         }
 
         private readonly GuiController ui;
-        private readonly ScreenCapturer capturer;
-        // private readonly MosaicProcessor processor; // 기존
-        public readonly MosaicProcessor processor; // ★★★ public으로 변경 ★★★
+        private readonly ScreenCapture capturer;
+        public readonly MosaicProcessor processor;
         private readonly FullscreenOverlay overlay;
         private readonly Random random = new Random();
 
@@ -39,13 +37,12 @@ namespace MosaicCensorSystem
 
         private readonly List<Mat> squareStickers = new();
         private readonly List<Mat> wideStickers = new();
-        // ★★★ 추적 ID별 스티커 정보를 저장하는 딕셔너리 ★★★
         private readonly Dictionary<int, StickerInfo> trackedStickers = new();
 
         public CensorService(GuiController uiController)
         {
             ui = uiController;
-            capturer = new ScreenCapturer();
+            capturer = new ScreenCapture();
             processor = new MosaicProcessor(Program.ONNX_MODEL_PATH);
             overlay = new FullscreenOverlay();
             LoadStickers();
@@ -69,9 +66,13 @@ namespace MosaicCensorSystem
         public void Start()
         {
             if (isRunning) return;
-            if (!processor.IsModelLoaded()) { ui.LogMessage("❌ 모델 파일 로드 실패."); MessageBox.Show("ONNX 모델 파일(best.onnx)을 찾을 수 없습니다.", "오류", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
+            if (!processor.IsModelLoaded())
+            {
+                ui.LogMessage("❌ 모델 파일 로드 실패.");
+                MessageBox.Show("ONNX 모델 파일(best.onnx)을 찾을 수 없습니다.", "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
             isRunning = true;
-            capturer.StartCapture();
             ui.SetRunningState(true);
             ui.UpdateStatus("🚀 시스템 실행 중...", Color.Green);
             overlay.Show();
@@ -83,7 +84,6 @@ namespace MosaicCensorSystem
         {
             if (!isRunning) return;
             isRunning = false;
-            capturer.StopCapture();
             processThread?.Join(1000);
             overlay.Hide();
             ui.SetRunningState(false);
@@ -106,13 +106,10 @@ namespace MosaicCensorSystem
                     {
                         if (enableCensoring) processor.ApplySingleCensorOptimized(displayFrame, detection);
 
-                        // ★★★ 스티커 갱신 및 그리기 로직 수정 ★★★
                         if (enableStickers)
                         {
-                            // 30초가 지났거나 새로 나타난 객체인지 확인
                             if (!trackedStickers.ContainsKey(detection.TrackId) || (DateTime.Now - trackedStickers[detection.TrackId].AssignedTime).TotalSeconds > 30)
                             {
-                                // 새로운 스티커 할당
                                 float aspectRatio = (float)detection.Width / detection.Height;
                                 var stickerList = aspectRatio > 1.2f ? wideStickers : squareStickers;
                                 if (stickerList.Count > 0)
@@ -124,8 +121,7 @@ namespace MosaicCensorSystem
                                     };
                                 }
                             }
-                            
-                            // 할당된 스티커 그리기
+
                             if (trackedStickers.ContainsKey(detection.TrackId))
                             {
                                 DrawSticker(displayFrame, detection, trackedStickers[detection.TrackId].Sticker);
@@ -140,8 +136,7 @@ namespace MosaicCensorSystem
                 if (delay > 0) Thread.Sleep(delay);
             }
         }
-        
-        // ★★★ DrawSticker가 외부에서 스티커를 받도록 수정 ★★★
+
         private void DrawSticker(Mat frame, Detection.Detection detection, Mat sticker)
         {
             if (sticker == null || sticker.IsDisposed) return;
@@ -151,16 +146,20 @@ namespace MosaicCensorSystem
 
             var roi = new Rect(detection.BBox[0], detection.BBox[1], detection.Width, detection.Height);
             using Mat frameRoi = new Mat(frame, roi);
-            
+
             var channels = Cv2.Split(resizedSticker);
-            if (channels.Length < 4) { foreach(var c in channels) c.Dispose(); return; }
+            if (channels.Length < 4)
+            {
+                foreach (var c in channels) c.Dispose();
+                return;
+            }
 
             var (stickerBgr, mask) = (new Mat(), channels[3]);
-            Cv2.Merge(new []{ channels[0], channels[1], channels[2] }, stickerBgr);
+            Cv2.Merge(new[] { channels[0], channels[1], channels[2] }, stickerBgr);
             stickerBgr.CopyTo(frameRoi, mask);
 
             stickerBgr.Dispose(); mask.Dispose();
-            foreach(var c in channels) c.Dispose();
+            foreach (var c in channels) c.Dispose();
         }
 
         public void UpdateSetting(string key, object value)
@@ -180,10 +179,27 @@ namespace MosaicCensorSystem
 
         public void TestCapture()
         {
-            try { using Mat testFrame = capturer.GetFrame(); if (testFrame != null && !testFrame.Empty()) { string testPath = Path.Combine(Environment.CurrentDirectory, "capture_test.jpg"); testFrame.SaveImage(testPath); ui.LogMessage($"✅ 캡처 테스트 성공! 크기: {testFrame.Width}x{testFrame.Height}"); MessageBox.Show($"캡처 테스트 성공! 이미지가 {testPath}에 저장되었습니다.", "성공", MessageBoxButtons.OK, MessageBoxIcon.Information); } else { ui.LogMessage("❌ 캡처 테스트 실패: 빈 프레임이 반환되었습니다."); } }
-            catch (Exception ex) { ui.LogMessage($"❌ 캡처 테스트 오류: {ex.Message}"); }
+            try
+            {
+                using Mat testFrame = capturer.GetFrame();
+                if (testFrame != null && !testFrame.Empty())
+                {
+                    string testPath = Path.Combine(Environment.CurrentDirectory, "capture_test.jpg");
+                    testFrame.SaveImage(testPath);
+                    ui.LogMessage($"✅ 캡처 테스트 성공! 크기: {testFrame.Width}x{testFrame.Height}");
+                    MessageBox.Show($"캡처 테스트 성공! 이미지가 {testPath}에 저장되었습니다.", "성공", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    ui.LogMessage($"❌ 캡처 테스트 실패: 빈 프레임이 반환되었습니다.");
+                }
+            }
+            catch (Exception ex)
+            {
+                ui.LogMessage($"❌ 캡처 테스트 오류: {ex.Message}");
+            }
         }
-        
+
         public void Dispose()
         {
             Stop();

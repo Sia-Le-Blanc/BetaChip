@@ -8,9 +8,6 @@ using OpenCvSharp.Extensions;
 
 namespace MosaicCensorSystem.Overlay
 {
-    /// <summary>
-    /// 전체 화면에 이미지를 표시하는 투명 오버레이 윈도우 (단순화 버전)
-    /// </summary>
     public class FullscreenOverlay : Form, IOverlay
     {
         #region Windows API
@@ -77,7 +74,7 @@ namespace MosaicCensorSystem.Overlay
             base.OnPaint(e);
             lock (bitmapLock)
             {
-                // ★★★ 추가된 코드: 배경을 TransparencyKey 색상으로 지웁니다. ★★★
+                // 매번 그리기 전에 투명색(검은색)으로 배경을 완전히 지워 잔상을 제거합니다.
                 using (SolidBrush brush = new SolidBrush(this.TransparencyKey))
                 {
                     e.Graphics.FillRectangle(brush, this.ClientRectangle);
