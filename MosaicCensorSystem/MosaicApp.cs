@@ -21,7 +21,7 @@ namespace MosaicCensorSystem
             ConnectEvents();
             uiController.LogMessage("✅ 시스템 초기화 완료. 시작 버튼을 누르세요.");
 
-            // ★★★ 초기 GPU 상태 업데이트 호출 ★★★
+            // 초기 GPU 상태 업데이트 호출
             uiController.UpdateGpuStatus(censorService.processor.CurrentExecutionProvider);
         }
 
@@ -31,7 +31,7 @@ namespace MosaicCensorSystem
             uiController.StopClicked += censorService.Stop;
             uiController.TestCaptureClicked += censorService.TestCapture;
 
-            // ★★★ 스티커 이벤트 연결 추가 ★★★
+            // 스티커 이벤트 연결
             uiController.StickerToggled += (val) => censorService.UpdateSetting("EnableStickers", val);
 
             uiController.FpsChanged += (fps) => censorService.UpdateSetting("TargetFPS", fps);
