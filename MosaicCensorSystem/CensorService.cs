@@ -168,7 +168,12 @@ namespace MosaicCensorSystem
                 
                 if (resized.Channels() == 4) // BGRA - 알파 채널 있음
                 {
-                    // 알파 블렌딩으로 모자이크 위에 스티커 겹치기
+                    // ★★★★★★★★★★★★ 수정된 부분 시작 ★★★★★★★★★★★★
+                    // 4채널(BGRA) ROI를 3채널(BGR)로 변환하여 연산을 통일합니다.
+                    using var frameRoiBgr = new Mat();
+                    Cv2.CvtColor(frameRoi, frameRoiBgr, ColorConversionCodes.BGRA2BGR);
+                    // ★★★★★★★★★★★★ 수정된 부분 끝 ★★★★★★★★★★★★
+                    
                     Mat[] channels = null;
                     try
                     {
@@ -176,13 +181,9 @@ namespace MosaicCensorSystem
                         using var stickerBgr = new Mat();
                         using var alpha = new Mat();
                         
-                        // BGR 채널 병합
                         Cv2.Merge(new[] { channels[0], channels[1], channels[2] }, stickerBgr);
-                        
-                        // 알파 채널을 0~1 범위로 정규화
                         channels[3].ConvertTo(alpha, MatType.CV_32F, 1.0/255.0);
                         
-                        // 픽셀별 알파 블렌딩: result = mosaic * (1-alpha) + sticker * alpha
                         using var alphaBgr = new Mat();
                         using var invAlpha = new Mat();
                         using var mosaicFloat = new Mat();
@@ -192,7 +193,11 @@ namespace MosaicCensorSystem
                         Cv2.CvtColor(alpha, alphaBgr, ColorConversionCodes.GRAY2BGR);
                         Cv2.Subtract(Scalar.All(1.0), alphaBgr, invAlpha);
                         
-                        frameRoi.ConvertTo(mosaicFloat, MatType.CV_32F);
+                        // ★★★★★★★★★★★★ 수정된 부분 시작 ★★★★★★★★★★★★
+                        // 원본 frameRoi 대신 3채널로 변환한 frameRoiBgr을 사용합니다.
+                        frameRoiBgr.ConvertTo(mosaicFloat, MatType.CV_32F);
+                        // ★★★★★★★★★★★★ 수정된 부분 끝 ★★★★★★★★★★★★
+
                         stickerBgr.ConvertTo(stickerFloat, MatType.CV_32F);
                         
                         using var mosaicWeighted = new Mat();
@@ -202,7 +207,12 @@ namespace MosaicCensorSystem
                         Cv2.Multiply(stickerFloat, alphaBgr, stickerWeighted);
                         Cv2.Add(mosaicWeighted, stickerWeighted, result);
                         
-                        result.ConvertTo(frameRoi, MatType.CV_8U);
+                        // ★★★★★★★★★★★★ 수정된 부분 시작 ★★★★★★★★★★★★
+                        // 최종 결과를 다시 4채널(BGRA)로 변환하여 원본 ROI에 덮어씁니다.
+                        using var result8u = new Mat();
+                        result.ConvertTo(result8u, MatType.CV_8U);
+                        Cv2.CvtColor(result8u, frameRoi, ColorConversionCodes.BGR2BGRA);
+                        // ★★★★★★★★★★★★ 수정된 부분 끝 ★★★★★★★★★★★★
                     }
                     finally
                     {
@@ -212,21 +222,20 @@ namespace MosaicCensorSystem
                         }
                     }
                 }
-                else if (resized.Channels() == 3) // BGR - 반투명 블렌딩
+                else if (resized.Channels() == 3)
                 {
-                    // 모자이크 70% + 스티커 30%로 블렌딩 (모자이크가 더 강하게)
                     Cv2.AddWeighted(frameRoi, 0.7, resized, 0.3, 0, frameRoi);
                 }
-                else // 그레이스케일
+                else 
                 {
                     using var colorSticker = new Mat();
                     Cv2.CvtColor(resized, colorSticker, ColorConversionCodes.GRAY2BGR);
                     Cv2.AddWeighted(frameRoi, 0.7, colorSticker, 0.3, 0, frameRoi);
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // 실시간 처리에서 오류 발생 시 조용히 무시
+                ui.LogMessage($"🚨 스티커 블렌딩 오류: {ex.Message}");
             }
         }
 
