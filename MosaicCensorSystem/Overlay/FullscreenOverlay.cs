@@ -27,8 +27,15 @@ namespace MosaicCensorSystem.Overlay
             this.WindowState = FormWindowState.Maximized;
             this.TopMost = true;
             this.ShowInTaskbar = false;
-            this.BackColor = Color.Black;
-            this.TransparencyKey = Color.Black;
+            
+            // ★★★★★★★★★★★★ 수정된 부분 ★★★★★★★★★★★★
+            // 사용자의 요청대로 투명 키 값을 (3, 3, 3)으로 조정합니다.
+            // 이렇게 하면 실제 이미지의 거의 모든 검은색 부분은 더 이상 투명해지지 않습니다.
+            Color transparentColor = Color.FromArgb(3, 3, 3);
+            this.BackColor = transparentColor;
+            this.TransparencyKey = transparentColor;
+            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+
             this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
         }
 
@@ -74,7 +81,6 @@ namespace MosaicCensorSystem.Overlay
             base.OnPaint(e);
             lock (bitmapLock)
             {
-                // 매번 그리기 전에 투명색(검은색)으로 배경을 완전히 지워 잔상을 제거합니다.
                 using (SolidBrush brush = new SolidBrush(this.TransparencyKey))
                 {
                     e.Graphics.FillRectangle(brush, this.ClientRectangle);
@@ -99,4 +105,4 @@ namespace MosaicCensorSystem.Overlay
             base.Dispose(disposing);
         }
     }
-}
+} 
