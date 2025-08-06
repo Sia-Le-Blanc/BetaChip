@@ -5,6 +5,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks; // ★★★ 추가된 부분 ★★★
 using System.Windows.Forms;
 using MosaicCensorSystem.Capture;
 using MosaicCensorSystem.Detection;
@@ -46,6 +47,20 @@ namespace MosaicCensorSystem
             processor = new MosaicProcessor(Program.ONNX_MODEL_PATH);
             overlay = new FullscreenOverlay();
             LoadStickers();
+
+            // ★★★★★★★★★★★★ 수정된 부분 ★★★★★★★★★★★★
+            // 모델 로드가 성공했다면, UI 멈춤 없이 백그라운드에서 모델을 미리 예열합니다.
+            if (processor.IsModelLoaded())
+            {
+                ui.LogMessage("🔥 모델 워밍업을 시작합니다... (백그라운드)");
+                Task.Run(() => 
+                {
+                    processor.WarmUpModel();
+                    // UI 스레드에서 안전하게 로그를 남기도록 수정
+                    ui.LogMessage("✅ 모델 워밍업 완료.");
+                });
+            }
+            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
         }
 
         private void LoadStickers()
@@ -168,12 +183,8 @@ namespace MosaicCensorSystem
                 
                 if (resized.Channels() == 4) // BGRA - 알파 채널 있음
                 {
-                    // ★★★★★★★★★★★★ 수정된 부분 시작 ★★★★★★★★★★★★
-                    // 4채널(BGRA) ROI를 3채널(BGR)로 변환하여 연산을 통일합니다.
                     using var frameRoiBgr = new Mat();
                     Cv2.CvtColor(frameRoi, frameRoiBgr, ColorConversionCodes.BGRA2BGR);
-                    // ★★★★★★★★★★★★ 수정된 부분 끝 ★★★★★★★★★★★★
-                    
                     Mat[] channels = null;
                     try
                     {
@@ -192,12 +203,7 @@ namespace MosaicCensorSystem
                         
                         Cv2.CvtColor(alpha, alphaBgr, ColorConversionCodes.GRAY2BGR);
                         Cv2.Subtract(Scalar.All(1.0), alphaBgr, invAlpha);
-                        
-                        // ★★★★★★★★★★★★ 수정된 부분 시작 ★★★★★★★★★★★★
-                        // 원본 frameRoi 대신 3채널로 변환한 frameRoiBgr을 사용합니다.
                         frameRoiBgr.ConvertTo(mosaicFloat, MatType.CV_32F);
-                        // ★★★★★★★★★★★★ 수정된 부분 끝 ★★★★★★★★★★★★
-
                         stickerBgr.ConvertTo(stickerFloat, MatType.CV_32F);
                         
                         using var mosaicWeighted = new Mat();
@@ -207,12 +213,9 @@ namespace MosaicCensorSystem
                         Cv2.Multiply(stickerFloat, alphaBgr, stickerWeighted);
                         Cv2.Add(mosaicWeighted, stickerWeighted, result);
                         
-                        // ★★★★★★★★★★★★ 수정된 부분 시작 ★★★★★★★★★★★★
-                        // 최종 결과를 다시 4채널(BGRA)로 변환하여 원본 ROI에 덮어씁니다.
                         using var result8u = new Mat();
                         result.ConvertTo(result8u, MatType.CV_8U);
                         Cv2.CvtColor(result8u, frameRoi, ColorConversionCodes.BGR2BGRA);
-                        // ★★★★★★★★★★★★ 수정된 부분 끝 ★★★★★★★★★★★★
                     }
                     finally
                     {

@@ -28,10 +28,8 @@ namespace MosaicCensorSystem.Detection
         private readonly float[] inputBuffer = new float[1 * 3 * 640 * 640];
         private readonly SortTracker tracker = new SortTracker();
 
-        // 최적화를 위해 추가된 멤버 변수
         private readonly Mat _resizedMat = new Mat();
         private readonly Mat _paddedMat = new Mat();
-        // _channels 필드에서 readonly 키워드 제거
         private Mat[] _channels = new Mat[3];
 
         public float ConfThreshold { get; set; } = 0.3f;
@@ -240,6 +238,27 @@ namespace MosaicCensorSystem.Detection
         public void SetTargets(List<string> targets) => Targets = targets ?? new List<string>();
         public void SetStrength(int strength) => this.strength = Math.Max(5, Math.Min(50, strength));
         public void SetCensorType(CensorType censorType) => this.currentCensorType = censorType;
+
+        public void WarmUpModel()
+        {
+            if (!IsModelLoaded()) return;
+            try
+            {
+                Console.WriteLine("🔥 모델 워밍업 시작...");
+                // 640x640 크기의 검은색 더미 이미지를 생성하여 모델에 입력합니다.
+                var dummyInput = new DenseTensor<float>(new float[1 * 3 * 640 * 640], new[] { 1, 3, 640, 640 });
+                var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("images", dummyInput) };
+                
+                // 결과는 필요 없고, 한번 실행하여 모델을 '예열'하는 것 자체가 목적입니다.
+                using (model.Run(inputs)) { }
+
+                Console.WriteLine("✅ 모델 워밍업 완료.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ 모델 워밍업 실패: {ex.Message}");
+            }
+        }
 
         public void Dispose()
         {
