@@ -36,9 +36,14 @@ namespace MosaicCensorSystem.UI
         private GroupBox controlGroup, settingsGroup, logGroup, targetsGroup;
         private Label gpuStatusLabel;
         private Label fpsLabel, strengthLabel, confidenceLabel;
-        private CheckBox enableDetectionCheckBox, enableCensoringCheckBox, enableStickersCheckBox;
+        private CheckBox enableDetectionCheckBox, enableCensoringCheckBox;
         private RadioButton mosaicRadioButton, blurRadioButton;
         private readonly Dictionary<string, CheckBox> targetCheckBoxes = new Dictionary<string, CheckBox>();
+
+        // ★★★ PATREON_VERSION이 정의된 경우에만 enableStickersCheckBox 변수를 선언합니다. ★★★
+#if PATREON_VERSION
+        private CheckBox enableStickersCheckBox;
+#endif
 
         // 리소스 매니저
         private ResourceManager resourceManager;
@@ -49,24 +54,24 @@ namespace MosaicCensorSystem.UI
             rootForm = mainForm;
             resourceManager = new ResourceManager("MosaicCensorSystem.Properties.Strings", typeof(GuiController).Assembly);
             CreateGui();
-            UpdateUIText(); 
+            UpdateUIText();
         }
 
         private void CreateGui()
         {
             rootForm.SuspendLayout();
             
-            titleLabel = new Label { 
-                Font = new Font("Arial", 12, FontStyle.Bold), 
-                BackColor = Color.LightSkyBlue, 
-                BorderStyle = BorderStyle.FixedSingle, 
-                TextAlign = ContentAlignment.MiddleCenter, 
-                Height = 40, 
-                Dock = DockStyle.Top 
+            titleLabel = new Label {
+                Font = new Font("Arial", 12, FontStyle.Bold),
+                BackColor = Color.LightSkyBlue,
+                BorderStyle = BorderStyle.FixedSingle,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Height = 40,
+                Dock = DockStyle.Top
             };
             
-            languageComboBox = new ComboBox { 
-                Location = new Point(350, 5), 
+            languageComboBox = new ComboBox {
+                Location = new Point(350, 5),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Size = new Size(100, 25),
                 Font = new Font("Arial", 9, FontStyle.Bold)
@@ -88,45 +93,45 @@ namespace MosaicCensorSystem.UI
         private void CreateContent(Panel parent)
         {
             int y = 10;
-            statusLabel = new Label { 
-                Font = new Font("Arial", 12, FontStyle.Bold), 
-                ForeColor = Color.Red, 
-                Location = new Point(10, y), 
-                AutoSize = true 
+            statusLabel = new Label {
+                Font = new Font("Arial", 12, FontStyle.Bold),
+                ForeColor = Color.Red,
+                Location = new Point(10, y),
+                AutoSize = true
             };
             parent.Controls.Add(statusLabel);
             y += 40;
             
-            gpuStatusLabel = new Label { 
-                Font = new Font("Arial", 10), 
-                Location = new Point(10, y), 
-                AutoSize = true 
+            gpuStatusLabel = new Label {
+                Font = new Font("Arial", 10),
+                Location = new Point(10, y),
+                AutoSize = true
             };
             parent.Controls.Add(gpuStatusLabel);
             y += 30;
 
             controlGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 80) };
-            startButton = new Button { 
-                BackColor = Color.DarkGreen, 
-                ForeColor = Color.White, 
-                Font = new Font("Arial", 10, FontStyle.Bold), 
-                Size = new Size(120, 40), 
-                Location = new Point(20, 25) 
+            startButton = new Button {
+                BackColor = Color.DarkGreen,
+                ForeColor = Color.White,
+                Font = new Font("Arial", 10, FontStyle.Bold),
+                Size = new Size(120, 40),
+                Location = new Point(20, 25)
             };
-            stopButton = new Button { 
-                BackColor = Color.DarkRed, 
-                ForeColor = Color.White, 
-                Font = new Font("Arial", 10, FontStyle.Bold), 
-                Size = new Size(120, 40), 
-                Location = new Point(160, 25), 
-                Enabled = false 
+            stopButton = new Button {
+                BackColor = Color.DarkRed,
+                ForeColor = Color.White,
+                Font = new Font("Arial", 10, FontStyle.Bold),
+                Size = new Size(120, 40),
+                Location = new Point(160, 25),
+                Enabled = false
             };
-            testButton = new Button { 
-                BackColor = Color.DarkBlue, 
-                ForeColor = Color.White, 
-                Font = new Font("Arial", 10, FontStyle.Bold), 
-                Size = new Size(120, 40), 
-                Location = new Point(300, 25) 
+            testButton = new Button {
+                BackColor = Color.DarkBlue,
+                ForeColor = Color.White,
+                Font = new Font("Arial", 10, FontStyle.Bold),
+                Size = new Size(120, 40),
+                Location = new Point(300, 25)
             };
             
             startButton.Click += (s, e) => StartClicked?.Invoke();
@@ -143,13 +148,13 @@ namespace MosaicCensorSystem.UI
             y += 390;
 
             logGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 120) };
-            logTextBox = new TextBox { 
-                Multiline = true, 
-                ScrollBars = ScrollBars.Vertical, 
-                ReadOnly = true, 
-                Location = new Point(10, 20), 
-                Size = new Size(440, 90), 
-                Font = new Font("Consolas", 8.25f) 
+            logTextBox = new TextBox {
+                Multiline = true,
+                ScrollBars = ScrollBars.Vertical,
+                ReadOnly = true,
+                Location = new Point(10, 20),
+                Size = new Size(440, 90),
+                Font = new Font("Consolas", 8.25f)
             };
             logGroup.Controls.Add(logTextBox);
             parent.Controls.Add(logGroup);
@@ -160,35 +165,39 @@ namespace MosaicCensorSystem.UI
             int y = 25;
             
             var fpsValueLabel = new Label { Text = "15", Location = new Point(390, y), AutoSize = true };
-            var fpsSlider = new TrackBar { 
-                Minimum = 5, Maximum = 240, Value = 15, TickFrequency = 5, 
-                Location = new Point(100, y - 5), Size = new Size(280, 45) 
+            var fpsSlider = new TrackBar {
+                Minimum = 5, Maximum = 240, Value = 15, TickFrequency = 5,
+                Location = new Point(100, y - 5), Size = new Size(280, 45)
             };
-            fpsSlider.ValueChanged += (s, e) => { 
-                fpsValueLabel.Text = fpsSlider.Value.ToString(); 
-                FpsChanged?.Invoke(fpsSlider.Value); 
+            fpsSlider.ValueChanged += (s, e) => {
+                fpsValueLabel.Text = fpsSlider.Value.ToString();
+                FpsChanged?.Invoke(fpsSlider.Value);
             };
             fpsLabel = new Label { Location = new Point(10, y), AutoSize = true };
             settingsGroup.Controls.AddRange(new Control[] { fpsLabel, fpsSlider, fpsValueLabel });
             y += 40;
 
-            enableDetectionCheckBox = new CheckBox { 
-                Checked = true, 
-                Location = new Point(10, y), 
-                AutoSize = true 
+            enableDetectionCheckBox = new CheckBox {
+                Checked = true,
+                Location = new Point(10, y),
+                AutoSize = true
             };
             enableDetectionCheckBox.CheckedChanged += (s, e) => DetectionToggled?.Invoke(enableDetectionCheckBox.Checked);
             
-            enableCensoringCheckBox = new CheckBox { 
-                Checked = true, 
-                Location = new Point(200, y), 
-                AutoSize = true 
+            enableCensoringCheckBox = new CheckBox {
+                Checked = true,
+                Location = new Point(200, y),
+                AutoSize = true
             };
             enableCensoringCheckBox.CheckedChanged += (s, e) => CensoringToggled?.Invoke(enableCensoringCheckBox.Checked);
             
             settingsGroup.Controls.AddRange(new Control[] { enableDetectionCheckBox, enableCensoringCheckBox });
             y += 30;
 
+            // ★★★★★★★★★★★★ 수정된 부분 ★★★★★★★★★★★★
+            // PATREON_VERSION이 정의된 경우(P=true로 빌드 시)에만
+            // 스티커 활성화 체크박스를 생성하고 화면에 추가합니다.
+#if PATREON_VERSION
             enableStickersCheckBox = new CheckBox { 
                 Checked = false, 
                 Location = new Point(10, y), 
@@ -198,20 +207,22 @@ namespace MosaicCensorSystem.UI
             enableStickersCheckBox.CheckedChanged += (s, e) => StickerToggled?.Invoke(enableStickersCheckBox.Checked);
             settingsGroup.Controls.Add(enableStickersCheckBox);
             y += 30;
+#endif
+            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 
-            mosaicRadioButton = new RadioButton { 
-                Checked = true, 
-                Location = new Point(10, y), 
-                AutoSize = true 
+            mosaicRadioButton = new RadioButton {
+                Checked = true,
+                Location = new Point(10, y),
+                AutoSize = true
             };
-            blurRadioButton = new RadioButton { 
-                Location = new Point(150, y), 
-                AutoSize = true 
+            blurRadioButton = new RadioButton {
+                Location = new Point(150, y),
+                AutoSize = true
             };
-            EventHandler censorTypeHandler = (s, e) => { 
-                if (s is RadioButton rb && rb.Checked) { 
-                    CensorTypeChanged?.Invoke(mosaicRadioButton.Checked ? CensorType.Mosaic : CensorType.Blur); 
-                } 
+            EventHandler censorTypeHandler = (s, e) => {
+                if (s is RadioButton rb && rb.Checked) {
+                    CensorTypeChanged?.Invoke(mosaicRadioButton.Checked ? CensorType.Mosaic : CensorType.Blur);
+                }
             };
             mosaicRadioButton.CheckedChanged += censorTypeHandler;
             blurRadioButton.CheckedChanged += censorTypeHandler;
@@ -219,27 +230,27 @@ namespace MosaicCensorSystem.UI
             y += 30;
 
             var strengthValueLabel = new Label { Text = "20", Location = new Point(390, y), AutoSize = true };
-            var strengthSlider = new TrackBar { 
-                Minimum = 10, Maximum = 40, Value = 20, TickFrequency = 5, 
-                Location = new Point(100, y - 5), Size = new Size(280, 45) 
+            var strengthSlider = new TrackBar {
+                Minimum = 10, Maximum = 40, Value = 20, TickFrequency = 5,
+                Location = new Point(100, y - 5), Size = new Size(280, 45)
             };
-            strengthSlider.ValueChanged += (s, e) => { 
-                strengthValueLabel.Text = strengthSlider.Value.ToString(); 
-                StrengthChanged?.Invoke(strengthSlider.Value); 
+            strengthSlider.ValueChanged += (s, e) => {
+                strengthValueLabel.Text = strengthSlider.Value.ToString();
+                StrengthChanged?.Invoke(strengthSlider.Value);
             };
             strengthLabel = new Label { Location = new Point(10, y), AutoSize = true };
             settingsGroup.Controls.AddRange(new Control[] { strengthLabel, strengthSlider, strengthValueLabel });
             y += 40;
 
             var confidenceValueLabel = new Label { Text = "0.3", Location = new Point(390, y), AutoSize = true };
-            var confidenceSlider = new TrackBar { 
-                Minimum = 10, Maximum = 90, Value = 30, TickFrequency = 10, 
-                Location = new Point(100, y - 5), Size = new Size(280, 45) 
+            var confidenceSlider = new TrackBar {
+                Minimum = 10, Maximum = 90, Value = 30, TickFrequency = 10,
+                Location = new Point(100, y - 5), Size = new Size(280, 45)
             };
-            confidenceSlider.ValueChanged += (s, e) => { 
-                float val = confidenceSlider.Value / 100.0f; 
-                confidenceValueLabel.Text = val.ToString("F1"); 
-                ConfidenceChanged?.Invoke(val); 
+            confidenceSlider.ValueChanged += (s, e) => {
+                float val = confidenceSlider.Value / 100.0f;
+                confidenceValueLabel.Text = val.ToString("F1");
+                ConfidenceChanged?.Invoke(val);
             };
             confidenceLabel = new Label { Location = new Point(10, y), AutoSize = true };
             settingsGroup.Controls.AddRange(new Control[] { confidenceLabel, confidenceSlider, confidenceValueLabel });
@@ -250,10 +261,10 @@ namespace MosaicCensorSystem.UI
             var defaultTargets = new[] { "얼굴", "가슴", "보지", "팬티" };
             for (int i = 0; i < allTargets.Length; i++)
             {
-                var checkbox = new CheckBox { 
+                var checkbox = new CheckBox {
                     Text = allTargets[i],
-                    Checked = defaultTargets.Contains(allTargets[i]), 
-                    Location = new Point(15 + (i % 3) * 140, 25 + (i / 3) * 20), 
+                    Checked = defaultTargets.Contains(allTargets[i]),
+                    Location = new Point(15 + (i % 3) * 140, 25 + (i / 3) * 20),
                     AutoSize = true,
                     Tag = allTargets[i]
                 };
@@ -287,7 +298,9 @@ namespace MosaicCensorSystem.UI
                 fpsLabel.Text = GetLocalizedString("LabelFps");
                 enableDetectionCheckBox.Text = GetLocalizedString("LabelDetection");
                 enableCensoringCheckBox.Text = GetLocalizedString("LabelEffect");
+#if PATREON_VERSION
                 enableStickersCheckBox.Text = GetLocalizedString("LabelStickers");
+#endif
                 mosaicRadioButton.Text = GetLocalizedString("LabelCensorTypeMosaic");
                 blurRadioButton.Text = GetLocalizedString("LabelCensorTypeBlur");
                 strengthLabel.Text = GetLocalizedString("LabelCensorStrength");
