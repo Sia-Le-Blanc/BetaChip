@@ -76,6 +76,15 @@ namespace MosaicCensorSystem.Overlay
             this.Invalidate();
         }
 
+        // ★★★ 멀티 모니터 지원을 위한 새로운 메서드 ★★★
+        public void SetMonitorBounds(int x, int y, int width, int height)
+        {
+            this.StartPosition = FormStartPosition.Manual;
+            this.Location = new System.Drawing.Point(x, y);
+            this.Size = new System.Drawing.Size(width, height);
+            this.WindowState = FormWindowState.Normal;
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
@@ -105,4 +114,4 @@ namespace MosaicCensorSystem.Overlay
             base.Dispose(disposing);
         }
     }
-} 
+}

@@ -9,6 +9,25 @@ namespace MosaicCensorSystem.Capture
     public class ScreenCapture : IDisposable
     {
         #region Win32 API P/Invoke
+        // DPI 관련 추가
+        [DllImport("user32.dll")]
+        private static extern int GetSystemMetrics(int nIndex);
+        
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetDC(IntPtr hWnd);
+        
+        [DllImport("gdi32.dll")]
+        private static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
+        
+        private const int SM_CXSCREEN = 0;
+        private const int SM_CYSCREEN = 1;
+        private const int SM_XVIRTUALSCREEN = 76;
+        private const int SM_YVIRTUALSCREEN = 77;
+        private const int SM_CXVIRTUALSCREEN = 78;
+        private const int SM_CYVIRTUALSCREEN = 79;
+        private const int LOGPIXELSX = 88;
+        private const int LOGPIXELSY = 90;
+
         // CreateDIBSection 함수와 BITMAPINFO 구조체를 추가합니다.
         [StructLayout(LayoutKind.Sequential)]
         public struct BITMAPINFO
@@ -61,6 +80,8 @@ namespace MosaicCensorSystem.Capture
 
         private readonly int width;
         private readonly int height;
+        private readonly int virtualX;
+        private readonly int virtualY;
         private IntPtr hDesktopWnd;
         private IntPtr hDesktopDC;
         private IntPtr hMemoryDC;
@@ -69,11 +90,29 @@ namespace MosaicCensorSystem.Capture
         private IntPtr pPixelData; // 픽셀 데이터 메모리 포인터
         private bool disposed = false;
 
+        // DPI 스케일링 정보
+        public float DpiScaleX { get; private set; }
+        public float DpiScaleY { get; private set; }
+
         public ScreenCapture()
         {
-            Rectangle screenBounds = Screen.PrimaryScreen.Bounds;
-            width = screenBounds.Width;
-            height = screenBounds.Height;
+            // 가상 데스크톱 전체 크기 획득 (멀티 모니터 지원)
+            virtualX = GetSystemMetrics(SM_XVIRTUALSCREEN);
+            virtualY = GetSystemMetrics(SM_YVIRTUALSCREEN);
+            width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+            height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+
+            // DPI 정보 획득
+            IntPtr dc = GetDC(IntPtr.Zero);
+            int dpiX = GetDeviceCaps(dc, LOGPIXELSX);
+            int dpiY = GetDeviceCaps(dc, LOGPIXELSY);
+            ReleaseDC(IntPtr.Zero, dc);
+
+            DpiScaleX = dpiX / 96.0f;
+            DpiScaleY = dpiY / 96.0f;
+
+            Console.WriteLine($"가상 데스크톱 물리적 해상도: {width}x{height} at ({virtualX}, {virtualY})");
+            Console.WriteLine($"DPI 스케일: {DpiScaleX:F2}x{DpiScaleY:F2}");
 
             hDesktopWnd = GetDesktopWindow();
             hDesktopDC = GetWindowDC(hDesktopWnd);
@@ -97,7 +136,8 @@ namespace MosaicCensorSystem.Capture
         {
             if (disposed) return null;
             
-            BitBlt(hMemoryDC, 0, 0, width, height, hDesktopDC, 0, 0, SRCCOPY);
+            // 가상 데스크톱 전체 영역 캡처 (멀티 모니터 지원)
+            BitBlt(hMemoryDC, 0, 0, width, height, hDesktopDC, virtualX, virtualY, SRCCOPY);
 
             // Bitmap 객체 변환 없이, 메모리 포인터(pPixelData)로 직접 Mat 객체를 생성합니다.
             // MatType.CV_8UC4는 8비트 부호없는 4채널(BGRA) 이미지를 의미합니다.

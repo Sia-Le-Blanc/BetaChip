@@ -1,7 +1,7 @@
 ; Inno Setup 스크립트 - 베타칩 후원자용
 ; 이 스크립트는 스티커 기능이 포함된 버전을 설치합니다.
 #define MyAppName "BetaChip - 후원자용"
-#define MyAppVersion "2.0.0-후원자용"
+#define MyAppVersion "2.1.0-후원자용"
 #define MyAppPublisher "Sia"
 #define MyAppURL "https://github.com/Sia-Le-Blanc/BetaChip"
 #define MyAppExeName "MosaicCensorSystem.exe"
