@@ -237,8 +237,15 @@ namespace MosaicCensorSystem.Detection
             }
             else if (currentCensorType == CensorType.BlackBox)
             {
-                // ★★★ 투명키(매젠타 변환 대상인 0-2 범위)와 확실히 구분되는 어두운 색 ★★★
-                region.SetTo(new Scalar(5, 5, 5)); // 투명키 변환 범위(0-2)를 벗어난 어두운 회색
+                // ★★★ 검정 박스: 완전한 검은색 사용 ★★★
+                if (region.Channels() == 4) // BGRA 채널
+                {
+                    region.SetTo(new Scalar(0, 0, 0, 255)); // 완전한 검은색 + 불투명
+                }
+                else // BGR 채널
+                {
+                    region.SetTo(new Scalar(0, 0, 0)); // 완전한 검은색
+                }
             }
         }
 

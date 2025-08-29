@@ -100,7 +100,7 @@ namespace MosaicCensorSystem.Overlay
             this.Invalidate();
         }
 
-        // ★★★ 검은색 픽셀을 투명키(매젠타)로 변환하는 메서드 ★★★
+        // ★★★ 특정 색상(3,3,3)만 투명키(매젠타)로 변환하는 메서드 ★★★
         private Mat ConvertBlackToTransparent(Mat originalFrame)
         {
             Mat result = new Mat();
@@ -115,19 +115,16 @@ namespace MosaicCensorSystem.Overlay
                 result = originalFrame.Clone();
             }
 
-            // 검은색 픽셀들을 매젠타로 변환하여 투명하게 만들기
-            // 하지만 검열된 검은색 박스는 보존하기 위해 완전한 검은색 (0,0,0)만 처리
-            Mat mask = new Mat();
-            Mat blackMask = new Mat();
+            // ★★★ 정확히 (3,3,3) 색상만 투명하게 변환 ★★★
+            Mat transparencyMask = new Mat();
             
-            // 완전한 검은색 영역 찾기 (B=0, G=0, R=0)
-            Cv2.InRange(result, new Scalar(0, 0, 0, 0), new Scalar(2, 2, 2, 255), blackMask);
+            // 딱 (3,3,3) 색상만 찾기 - 다른 검정색들은 보호
+            Cv2.InRange(result, new Scalar(3, 3, 3, 0), new Scalar(3, 3, 3, 255), transparencyMask);
             
-            // 검은색 영역을 매젠타로 변경
-            result.SetTo(new Scalar(255, 0, 255, 255), blackMask); // 매젠타 (BGRA)
+            // (3,3,3) 영역만 매젠타로 변경하여 투명하게 만들기
+            result.SetTo(new Scalar(255, 0, 255, 255), transparencyMask); // 매젠타 (BGRA)
 
-            mask.Dispose();
-            blackMask.Dispose();
+            transparencyMask.Dispose();
             
             return result;
         }
