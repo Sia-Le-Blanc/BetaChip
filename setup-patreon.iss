@@ -6,7 +6,7 @@
 #define MyAppURL "https://github.com/Sia-Le-Blanc/BetaChip"
 #define MyAppExeName "MosaicCensorSystem.exe"
 ; ★★★ 후원자용 빌드 결과물 경로 - 상대 경로 사용 ★★★
-#define MyBuildPath "MosaicCensorSystem\bin\Release\Patreon\net8.0-windows"
+#define MyBuildPath "C:\Users\Sia\OneDrive\바탕 화면\main\BetaChip\MosaicCensorSystem\bin\Release\Patreon\net8.0-windows"
 
 [Setup]
 ; 중요: AppId를 무료 버전과 다르게 설정하여 충돌을 방지합니다.
@@ -117,7 +117,6 @@ begin
       FindClose(FindRec);
     end;
   end;
-  
   if Count > 0 then
   begin
     Log('Sticker files successfully installed: ' + IntToStr(Count) + ' files');
@@ -139,7 +138,6 @@ begin
   begin
     ModelPath := ExpandConstant('{app}\Resources\best.onnx');
     BackupPath := ExpandConstant('{app}\best.onnx');
-    
     { 메인 모델 파일이 없으면 백업에서 복사 시도 }
     if not FileExists(ModelPath) and FileExists(BackupPath) then
     begin
@@ -172,6 +170,7 @@ end;
 function InitializeSetup(): Boolean;
 var
   Version: TWindowsVersion;
+  ErrorCode: Integer;
 begin
   Result := True;
   
@@ -195,7 +194,7 @@ begin
               '지금 Microsoft 다운로드 페이지를 여시겠습니까?',
               mbConfirmation, MB_YESNO) = IDYES then
     begin
-      ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/8.0', '', '', SW_SHOWNORMAL, ewNoWait, Result);
+      ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/8.0', '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
     end;
     
     { .NET이 없어도 설치는 계속 진행 }

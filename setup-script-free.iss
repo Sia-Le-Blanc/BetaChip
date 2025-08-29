@@ -98,7 +98,6 @@ begin
   begin
     ModelPath := ExpandConstant('{app}\Resources\best.onnx');
     BackupPath := ExpandConstant('{app}\best.onnx');
-    
     { 메인 모델 파일이 없으면 백업에서 복사 시도 }
     if not FileExists(ModelPath) and FileExists(BackupPath) then
     begin
@@ -115,6 +114,7 @@ end;
 function InitializeSetup(): Boolean;
 var
   Version: TWindowsVersion;
+  ErrorCode: Integer; 
 begin
   Result := True;
   
@@ -138,7 +138,7 @@ begin
               '지금 Microsoft 다운로드 페이지를 여시겠습니까?',
               mbConfirmation, MB_YESNO) = IDYES then
     begin
-      ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/8.0', '', '', SW_SHOWNORMAL, ewNoWait, Result);
+      ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/8.0', '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
     end;
     
     { .NET이 없어도 설치는 계속 진행 (런타임에서 오류 메시지 표시) }
