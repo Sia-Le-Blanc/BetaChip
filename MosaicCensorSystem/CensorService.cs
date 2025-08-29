@@ -5,13 +5,19 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks; // ★★★ 추가된 부분 ★★★
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using MosaicCensorSystem.Capture;
 using MosaicCensorSystem.Detection;
-using MosaicCensorSystem.Monitor; // ★★★ 멀티 모니터 지원 추가 ★★★
 using MosaicCensorSystem.UI;
 using OpenCvSharp;
+
+// ★★★ 후원자 전용: 멀티 모니터 기능 ★★★
+#if PATREON_VERSION
+using MosaicCensorSystem.Monitor;
+#else
+using MosaicCensorSystem.Overlay;
+#endif
 
 namespace MosaicCensorSystem
 {
@@ -26,8 +32,14 @@ namespace MosaicCensorSystem
         private readonly GuiController ui;
         private readonly ScreenCapture capturer;
         public readonly MosaicProcessor processor;
-        private readonly MultiMonitorManager multiMonitorManager; // ★★★ overlay 대신 멀티 모니터 매니저 ★★★
         private readonly Random random = new Random();
+
+        // ★★★ 조건부 컴파일: 후원자는 멀티모니터, 무료는 단일 오버레이 ★★★
+#if PATREON_VERSION
+        private readonly MultiMonitorManager multiMonitorManager;
+#else
+        private readonly FullscreenOverlay singleOverlay;
+#endif
 
         private Thread processThread;
         private volatile bool isRunning = false;
@@ -45,29 +57,33 @@ namespace MosaicCensorSystem
             ui = uiController;
             capturer = new ScreenCapture();
             processor = new MosaicProcessor(Program.ONNX_MODEL_PATH);
-            multiMonitorManager = new MultiMonitorManager(); // ★★★ 멀티 모니터 매니저 초기화 ★★★
+            
+            // ★★★ 조건부 초기화 ★★★
+#if PATREON_VERSION
+            multiMonitorManager = new MultiMonitorManager();
+            ui.LogMessage($"🖥️ 후원자 기능: 멀티 모니터 지원 활성화!");
+            ui.LogMessage($"🖥️ 감지된 모니터 수: {multiMonitorManager.Monitors.Count}");
+            for (int i = 0; i < multiMonitorManager.Monitors.Count; i++)
+            {
+                var monitor = multiMonitorManager.Monitors[i];
+                ui.LogMessage($"   모니터 {i + 1}: {monitor.Bounds.Width}x{monitor.Bounds.Height}");
+            }
+#else
+            singleOverlay = new FullscreenOverlay();
+            ui.LogMessage($"🖥️ 무료 버전: 메인 모니터만 지원");
+#endif
+
             LoadStickers();
 
-            // ★★★★★★★★★★★★ 수정된 부분 ★★★★★★★★★★★★
-            // 모델 로드가 성공했다면, UI 멈춤 없이 백그라운드에서 모델을 미리 예열합니다.
+            // 모델 워밍업
             if (processor.IsModelLoaded())
             {
                 ui.LogMessage("🔥 모델 워밍업을 시작합니다... (백그라운드)");
                 Task.Run(() => 
                 {
                     processor.WarmUpModel();
-                    // UI 스레드에서 안전하게 로그를 남기도록 수정
                     ui.LogMessage("✅ 모델 워밍업 완료.");
                 });
-            }
-            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-
-            // 멀티 모니터 정보 로그
-            ui.LogMessage($"🖥️ 감지된 모니터 수: {multiMonitorManager.Monitors.Count}");
-            for (int i = 0; i < multiMonitorManager.Monitors.Count; i++)
-            {
-                var monitor = multiMonitorManager.Monitors[i];
-                ui.LogMessage($"   모니터 {i + 1}: {monitor.Bounds.Width}x{monitor.Bounds.Height}");
             }
         }
 
@@ -102,7 +118,14 @@ namespace MosaicCensorSystem
             isRunning = true;
             ui.SetRunningState(true);
             ui.UpdateStatus("🚀 시스템 실행 중...", Color.Green);
-            multiMonitorManager.ShowOverlays(); // ★★★ 모든 활성화된 모니터에 오버레이 표시 ★★★
+            
+            // ★★★ 조건부 오버레이 표시 ★★★
+#if PATREON_VERSION
+            multiMonitorManager.ShowOverlays();
+#else
+            singleOverlay.Show();
+#endif
+
             processThread = new Thread(ProcessingLoop) { IsBackground = true, Name = "CensorProcessingThread" };
             processThread.Start();
         }
@@ -112,7 +135,14 @@ namespace MosaicCensorSystem
             if (!isRunning) return;
             isRunning = false;
             processThread?.Join(1000);
-            multiMonitorManager.HideOverlays(); // ★★★ 모든 오버레이 숨김 ★★★
+            
+            // ★★★ 조건부 오버레이 숨김 ★★★
+#if PATREON_VERSION
+            multiMonitorManager.HideOverlays();
+#else
+            singleOverlay.Hide();
+#endif
+
             ui.SetRunningState(false);
             ui.UpdateStatus("⭕ 시스템 대기 중", Color.Red);
         }
@@ -162,8 +192,12 @@ namespace MosaicCensorSystem
                     }
                 }
 
-                // ★★★ 멀티 모니터에 프레임 업데이트 ★★★
+                // ★★★ 조건부 프레임 업데이트 ★★★
+#if PATREON_VERSION
                 multiMonitorManager.UpdateFrames(displayFrame);
+#else
+                singleOverlay.UpdateFrame(displayFrame);
+#endif
                 
                 var elapsedMs = (DateTime.Now - frameStart).TotalMilliseconds;
                 int delay = (1000 / targetFPS) - (int)elapsedMs;
@@ -270,12 +304,14 @@ namespace MosaicCensorSystem
             }
         }
 
-        // ★★★ 모니터 설정 추가 ★★★
+        // ★★★ 후원자 전용: 모니터 설정 ★★★
+#if PATREON_VERSION
         public void SetMonitorEnabled(int index, bool enabled)
         {
             multiMonitorManager.SetMonitorEnabled(index, enabled);
             ui.LogMessage($"🖥️ 모니터 {index + 1} {(enabled ? "활성화" : "비활성화")}");
         }
+#endif
 
         public void TestCapture()
         {
@@ -305,7 +341,14 @@ namespace MosaicCensorSystem
             Stop();
             capturer?.Dispose();
             processor?.Dispose();
-            multiMonitorManager?.Dispose(); // ★★★ overlay 대신 multiMonitorManager ★★★
+            
+            // ★★★ 조건부 리소스 해제 ★★★
+#if PATREON_VERSION
+            multiMonitorManager?.Dispose();
+#else
+            singleOverlay?.Dispose();
+#endif
+
             foreach (var s in squareStickers) s.Dispose();
             foreach (var s in wideStickers) s.Dispose();
         }

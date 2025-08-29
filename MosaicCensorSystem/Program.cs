@@ -13,21 +13,30 @@ namespace MosaicCensorSystem
 
         private static string FindModelPath()
         {
-            // 여러 가능한 경로들을 순서대로 시도
-            string[] possiblePaths = {
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"Resources\best.onnx"),
-                Path.Combine(Environment.CurrentDirectory, @"Resources\best.onnx"),
-                Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "", @"Resources\best.onnx"),
-                Path.Combine(Application.StartupPath, @"Resources\best.onnx"),
-                @".\Resources\best.onnx",
-                @"Resources\best.onnx",
-                @"best.onnx"
+            // ★★★ 안전한 경로들만 우선 순위별로 시도 ★★★
+            string[] safePaths = {
+                // 1. 가장 안전 - 실행파일 기준 Resources 폴더
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "best.onnx"),
+                
+                // 2. WinForms 환경에서 안전
+                Path.Combine(Application.StartupPath, "Resources", "best.onnx"),
+                
+                // 3. 백업 - 실행파일과 같은 폴더에 직접
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "best.onnx"),
+                
+                // 4. 백업 - StartupPath에 직접  
+                Path.Combine(Application.StartupPath, "best.onnx"),
+                
+                // 5. 단일파일 배포 대응 (조건부)
+                GetAssemblyLocationPath(),
             };
 
-            Console.WriteLine("=== ONNX 모델 경로 탐색 시작 ===");
+            Console.WriteLine("=== 견고한 ONNX 모델 경로 탐색 시작 ===");
             
-            foreach (string path in possiblePaths)
+            foreach (string path in safePaths)
             {
+                if (string.IsNullOrEmpty(path)) continue;
+                
                 try
                 {
                     string fullPath = Path.GetFullPath(path);
@@ -45,25 +54,54 @@ namespace MosaicCensorSystem
                 }
             }
 
-            // 모든 경로에서 실패한 경우 디렉터리 상세 진단
+            // 모든 안전한 경로에서 실패한 경우 상세 진단
             DiagnoseEnvironment();
             
-            Console.WriteLine("❌ 모든 경로에서 모델을 찾을 수 없음");
-            return possiblePaths[0]; // 기본값 반환
+            Console.WriteLine("❌ 모든 안전한 경로에서 모델을 찾을 수 없음");
+            return safePaths[0]; // 기본값 반환
+        }
+
+        // ★★★ 단일파일 배포 대응 경로 ★★★
+        private static string GetAssemblyLocationPath()
+        {
+            try
+            {
+                var location = Assembly.GetExecutingAssembly().Location;
+                if (!string.IsNullOrEmpty(location))
+                {
+                    var dir = Path.GetDirectoryName(location);
+                    if (!string.IsNullOrEmpty(dir))
+                    {
+                        return Path.Combine(dir, "Resources", "best.onnx");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ Assembly 위치 확인 실패: {ex.Message}");
+            }
+            return null;
         }
 
         private static void DiagnoseEnvironment()
         {
             Console.WriteLine("\n=== 환경 진단 정보 ===");
-            Console.WriteLine($"BaseDirectory: {AppDomain.CurrentDomain.BaseDirectory}");
-            Console.WriteLine($"CurrentDirectory: {Environment.CurrentDirectory}");
-            Console.WriteLine($"ExecutingAssembly: {Assembly.GetExecutingAssembly().Location}");
-            Console.WriteLine($"StartupPath: {Application.StartupPath}");
+            
+            try
+            {
+                Console.WriteLine($"BaseDirectory: {AppDomain.CurrentDomain.BaseDirectory}");
+                Console.WriteLine($"StartupPath: {Application.StartupPath}");
+                Console.WriteLine($"CurrentDirectory: {Environment.CurrentDirectory}");
+                Console.WriteLine($"ExecutingAssembly: {Assembly.GetExecutingAssembly().Location}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"진단 정보 수집 실패: {ex.Message}");
+            }
             
             // Resources 디렉터리 존재 여부 확인
             string[] resourceDirs = {
                 Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources"),
-                Path.Combine(Environment.CurrentDirectory, "Resources"),
                 Path.Combine(Application.StartupPath, "Resources")
             };
 
