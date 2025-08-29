@@ -37,8 +37,12 @@ namespace MosaicCensorSystem.UI
         private Label gpuStatusLabel;
         private Label fpsLabel, strengthLabel, confidenceLabel;
         private CheckBox enableDetectionCheckBox, enableCensoringCheckBox;
-        private RadioButton mosaicRadioButton, blurRadioButton;
+        private RadioButton mosaicRadioButton, blurRadioButton, blackBoxRadioButton;
+        private TrackBar fpsSlider, strengthSlider, confidenceSlider;
         private readonly Dictionary<string, CheckBox> targetCheckBoxes = new Dictionary<string, CheckBox>();
+
+        // ★★★ 툴팁 컴포넌트 추가 ★★★
+        private ToolTip toolTip;
 
         // ★★★ PATREON_VERSION이 정의된 경우에만 enableStickersCheckBox 변수를 선언합니다. ★★★
 #if PATREON_VERSION
@@ -53,6 +57,13 @@ namespace MosaicCensorSystem.UI
         {
             rootForm = mainForm;
             resourceManager = new ResourceManager("MosaicCensorSystem.Properties.Strings", typeof(GuiController).Assembly);
+            
+            // 툴팁 초기화
+            toolTip = new ToolTip();
+            toolTip.AutoPopDelay = 8000; // 8초 후 자동 사라짐
+            toolTip.InitialDelay = 500;  // 0.5초 후 나타남
+            toolTip.ReshowDelay = 200;   // 다른 컨트롤로 이동시 0.2초 후 나타남
+            
             CreateGui();
             UpdateUIText();
         }
@@ -165,7 +176,7 @@ namespace MosaicCensorSystem.UI
             int y = 25;
             
             var fpsValueLabel = new Label { Text = "15", Location = new Point(390, y), AutoSize = true };
-            var fpsSlider = new TrackBar {
+            fpsSlider = new TrackBar {
                 Minimum = 5, Maximum = 240, Value = 15, TickFrequency = 5,
                 Location = new Point(100, y - 5), Size = new Size(280, 45)
             };
@@ -216,21 +227,30 @@ namespace MosaicCensorSystem.UI
                 AutoSize = true
             };
             blurRadioButton = new RadioButton {
-                Location = new Point(150, y),
+                Location = new Point(100, y),
                 AutoSize = true
             };
+            blackBoxRadioButton = new RadioButton {
+                Location = new Point(200, y),
+                AutoSize = true
+            };
+            
             EventHandler censorTypeHandler = (s, e) => {
                 if (s is RadioButton rb && rb.Checked) {
-                    CensorTypeChanged?.Invoke(mosaicRadioButton.Checked ? CensorType.Mosaic : CensorType.Blur);
+                    if (mosaicRadioButton.Checked) CensorTypeChanged?.Invoke(CensorType.Mosaic);
+                    else if (blurRadioButton.Checked) CensorTypeChanged?.Invoke(CensorType.Blur);
+                    else if (blackBoxRadioButton.Checked) CensorTypeChanged?.Invoke(CensorType.BlackBox);
                 }
             };
             mosaicRadioButton.CheckedChanged += censorTypeHandler;
             blurRadioButton.CheckedChanged += censorTypeHandler;
-            settingsGroup.Controls.AddRange(new Control[] { mosaicRadioButton, blurRadioButton });
+            blackBoxRadioButton.CheckedChanged += censorTypeHandler;
+            
+            settingsGroup.Controls.AddRange(new Control[] { mosaicRadioButton, blurRadioButton, blackBoxRadioButton });
             y += 30;
 
             var strengthValueLabel = new Label { Text = "20", Location = new Point(390, y), AutoSize = true };
-            var strengthSlider = new TrackBar {
+            strengthSlider = new TrackBar {
                 Minimum = 10, Maximum = 40, Value = 20, TickFrequency = 5,
                 Location = new Point(100, y - 5), Size = new Size(280, 45)
             };
@@ -243,7 +263,7 @@ namespace MosaicCensorSystem.UI
             y += 40;
 
             var confidenceValueLabel = new Label { Text = "0.3", Location = new Point(390, y), AutoSize = true };
-            var confidenceSlider = new TrackBar {
+            confidenceSlider = new TrackBar {
                 Minimum = 10, Maximum = 90, Value = 30, TickFrequency = 10,
                 Location = new Point(100, y - 5), Size = new Size(280, 45)
             };
@@ -280,6 +300,7 @@ namespace MosaicCensorSystem.UI
             string culture = languageComboBox.SelectedIndex == 0 ? "ko-KR" : "en-US";
             Thread.CurrentThread.CurrentUICulture = new CultureInfo(culture);
             UpdateUIText();
+            UpdateToolTips(); // ★★★ 툴팁도 업데이트 ★★★
         }
 
         private void UpdateUIText()
@@ -303,6 +324,7 @@ namespace MosaicCensorSystem.UI
 #endif
                 mosaicRadioButton.Text = GetLocalizedString("LabelCensorTypeMosaic");
                 blurRadioButton.Text = GetLocalizedString("LabelCensorTypeBlur");
+                blackBoxRadioButton.Text = GetLocalizedString("LabelCensorTypeBlackBox");
                 strengthLabel.Text = GetLocalizedString("LabelCensorStrength");
                 confidenceLabel.Text = GetLocalizedString("LabelConfidence");
                 targetsGroup.Text = GetLocalizedString("GroupTargets");
@@ -340,10 +362,55 @@ namespace MosaicCensorSystem.UI
                 {
                     UpdateStatus(GetLocalizedString("StatusRunning"), Color.Green);
                 }
+                
+                // ★★★ 툴팁 업데이트 호출 ★★★
+                UpdateToolTips();
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"리소스 로드 실패: {ex.Message}");
+            }
+        }
+
+        // ★★★ 툴팁 업데이트 메서드 추가 ★★★
+        private void UpdateToolTips()
+        {
+            try
+            {
+                // 버튼 툴팁
+                toolTip.SetToolTip(startButton, GetLocalizedString("TooltipStart"));
+                toolTip.SetToolTip(stopButton, GetLocalizedString("TooltipStop"));
+                toolTip.SetToolTip(testButton, GetLocalizedString("TooltipTest"));
+
+                // 슬라이더 툴팁
+                toolTip.SetToolTip(fpsSlider, GetLocalizedString("TooltipFps"));
+                toolTip.SetToolTip(strengthSlider, GetLocalizedString("TooltipStrength"));
+                toolTip.SetToolTip(confidenceSlider, GetLocalizedString("TooltipConfidence"));
+
+                // 체크박스 툴팁
+                toolTip.SetToolTip(enableDetectionCheckBox, GetLocalizedString("TooltipDetection"));
+                toolTip.SetToolTip(enableCensoringCheckBox, GetLocalizedString("TooltipCensoring"));
+
+#if PATREON_VERSION
+                toolTip.SetToolTip(enableStickersCheckBox, GetLocalizedString("TooltipStickers"));
+#endif
+
+                // 라디오 버튼 툴팁
+                toolTip.SetToolTip(mosaicRadioButton, GetLocalizedString("TooltipMosaic"));
+                toolTip.SetToolTip(blurRadioButton, GetLocalizedString("TooltipBlur"));
+                toolTip.SetToolTip(blackBoxRadioButton, GetLocalizedString("TooltipBlackBox"));
+
+                // 타겟 체크박스 툴팁
+                foreach (var kvp in targetCheckBoxes)
+                {
+                    var checkbox = kvp.Value;
+                    var originalKey = (string)checkbox.Tag ?? kvp.Key;
+                    toolTip.SetToolTip(checkbox, GetLocalizedString($"TooltipTarget_{originalKey}"));
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"툴팁 업데이트 실패: {ex.Message}");
             }
         }
 
@@ -454,6 +521,12 @@ namespace MosaicCensorSystem.UI
             }
             
             return false;
+        }
+
+        // ★★★ 리소스 해제 메서드 추가 ★★★
+        public void Dispose()
+        {
+            toolTip?.Dispose();
         }
     }
 }

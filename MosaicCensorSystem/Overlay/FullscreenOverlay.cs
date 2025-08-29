@@ -16,10 +16,20 @@ namespace MosaicCensorSystem.Overlay
         private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
 
         [DllImport("user32.dll")] private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+        [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+        [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY);
+        
+        private const uint MONITOR_DEFAULTTONEAREST = 2;
+        private const int MDT_EFFECTIVE_DPI = 0;
         #endregion
 
         private Bitmap currentBitmap;
         private readonly object bitmapLock = new object();
+        private float dpiScaleX = 1.0f;
+        private float dpiScaleY = 1.0f;
+
+        // ★★★ 투명키를 매젠타로 설정 (거의 사용되지 않는 색상) ★★★
+        private static readonly Color TRANSPARENCY_KEY = Color.FromArgb(255, 0, 255); // 매젠타
 
         public FullscreenOverlay()
         {
@@ -28,13 +38,8 @@ namespace MosaicCensorSystem.Overlay
             this.TopMost = true;
             this.ShowInTaskbar = false;
             
-            // ★★★★★★★★★★★★ 수정된 부분 ★★★★★★★★★★★★
-            // 사용자의 요청대로 투명 키 값을 (3, 3, 3)으로 조정합니다.
-            // 이렇게 하면 실제 이미지의 거의 모든 검은색 부분은 더 이상 투명해지지 않습니다.
-            Color transparentColor = Color.FromArgb(3, 3, 3);
-            this.BackColor = transparentColor;
-            this.TransparencyKey = transparentColor;
-            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+            this.BackColor = TRANSPARENCY_KEY;
+            this.TransparencyKey = TRANSPARENCY_KEY;
 
             this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
         }
@@ -52,6 +57,7 @@ namespace MosaicCensorSystem.Overlay
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+            UpdateDpiScale();
             try
             {
                 SetWindowDisplayAffinity(this.Handle, WDA_EXCLUDEFROMCAPTURE);
@@ -62,11 +68,29 @@ namespace MosaicCensorSystem.Overlay
             }
         }
 
+        private void UpdateDpiScale()
+        {
+            try
+            {
+                IntPtr monitor = MonitorFromWindow(this.Handle, MONITOR_DEFAULTTONEAREST);
+                GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, out uint dpiX, out uint dpiY);
+                dpiScaleX = dpiX / 96.0f;
+                dpiScaleY = dpiY / 96.0f;
+            }
+            catch
+            {
+                dpiScaleX = dpiScaleY = 1.0f;
+            }
+        }
+
         public void UpdateFrame(Mat processedFrame)
         {
             if (processedFrame == null || processedFrame.Empty()) return;
 
-            Bitmap newBitmap = BitmapConverter.ToBitmap(processedFrame);
+            // ★★★ 투명 처리를 위한 전처리: 검은색을 매젠타로 변환 ★★★
+            Mat transparentFrame = ConvertBlackToTransparent(processedFrame);
+            Bitmap newBitmap = BitmapConverter.ToBitmap(transparentFrame);
+            transparentFrame.Dispose();
 
             lock (bitmapLock)
             {
@@ -76,12 +100,50 @@ namespace MosaicCensorSystem.Overlay
             this.Invalidate();
         }
 
-        // ★★★ 멀티 모니터 지원을 위한 새로운 메서드 ★★★
+        // ★★★ 검은색 픽셀을 투명키(매젠타)로 변환하는 메서드 ★★★
+        private Mat ConvertBlackToTransparent(Mat originalFrame)
+        {
+            Mat result = new Mat();
+            
+            // BGRA 채널로 변환 (투명도 지원)
+            if (originalFrame.Channels() == 3)
+            {
+                Cv2.CvtColor(originalFrame, result, ColorConversionCodes.BGR2BGRA);
+            }
+            else
+            {
+                result = originalFrame.Clone();
+            }
+
+            // 검은색 픽셀들을 매젠타로 변환하여 투명하게 만들기
+            // 하지만 검열된 검은색 박스는 보존하기 위해 완전한 검은색 (0,0,0)만 처리
+            Mat mask = new Mat();
+            Mat blackMask = new Mat();
+            
+            // 완전한 검은색 영역 찾기 (B=0, G=0, R=0)
+            Cv2.InRange(result, new Scalar(0, 0, 0, 0), new Scalar(2, 2, 2, 255), blackMask);
+            
+            // 검은색 영역을 매젠타로 변경
+            result.SetTo(new Scalar(255, 0, 255, 255), blackMask); // 매젠타 (BGRA)
+
+            mask.Dispose();
+            blackMask.Dispose();
+            
+            return result;
+        }
+
         public void SetMonitorBounds(int x, int y, int width, int height)
         {
             this.StartPosition = FormStartPosition.Manual;
-            this.Location = new System.Drawing.Point(x, y);
-            this.Size = new System.Drawing.Size(width, height);
+            
+            // DPI 스케일링 적용
+            int scaledX = (int)(x / dpiScaleX);
+            int scaledY = (int)(y / dpiScaleY);
+            int scaledWidth = (int)(width / dpiScaleX);
+            int scaledHeight = (int)(height / dpiScaleY);
+            
+            this.Location = new System.Drawing.Point(scaledX, scaledY);
+            this.Size = new System.Drawing.Size(scaledWidth, scaledHeight);
             this.WindowState = FormWindowState.Normal;
         }
 
@@ -90,6 +152,7 @@ namespace MosaicCensorSystem.Overlay
             base.OnPaint(e);
             lock (bitmapLock)
             {
+                // 배경을 투명키로 채우기
                 using (SolidBrush brush = new SolidBrush(this.TransparencyKey))
                 {
                     e.Graphics.FillRectangle(brush, this.ClientRectangle);
@@ -97,7 +160,9 @@ namespace MosaicCensorSystem.Overlay
 
                 if (currentBitmap != null)
                 {
-                    e.Graphics.DrawImage(currentBitmap, this.ClientRectangle);
+                    // DPI 스케일링을 고려한 이미지 그리기
+                    Rectangle destRect = new Rectangle(0, 0, this.ClientRectangle.Width, this.ClientRectangle.Height);
+                    e.Graphics.DrawImage(currentBitmap, destRect);
                 }
             }
         }

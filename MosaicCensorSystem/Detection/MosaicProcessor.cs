@@ -10,7 +10,7 @@ using OpenCvSharp;
 
 namespace MosaicCensorSystem.Detection
 {
-    public enum CensorType { Mosaic, Blur }
+    public enum CensorType { Mosaic, Blur, BlackBox }
 
     public class Detection
     {
@@ -220,18 +220,25 @@ namespace MosaicCensorSystem.Detection
             if (detection.Width <= 0 || detection.Height <= 0) return;
             Rect roi = new Rect(detection.BBox[0], detection.BBox[1], detection.Width, detection.Height);
             using Mat region = new Mat(frame, roi);
+            
             if (currentCensorType == CensorType.Mosaic)
             {
-                int w = region.Width, h = region.Height; int smallW = Math.Max(1, w / strength), smallH = Math.Max(1, h / strength);
+                int w = region.Width, h = region.Height; 
+                int smallW = Math.Max(1, w / strength), smallH = Math.Max(1, h / strength);
                 using Mat small = new Mat();
                 Cv2.Resize(region, small, new OpenCvSharp.Size(smallW, smallH), interpolation: InterpolationFlags.Linear);
                 Cv2.Resize(small, region, new OpenCvSharp.Size(w, h), interpolation: InterpolationFlags.Nearest);
             }
-            else 
+            else if (currentCensorType == CensorType.Blur)
             { 
                 int kernelSize = Math.Max(3, strength + 1); 
                 if (kernelSize % 2 == 0) kernelSize++; 
                 Cv2.GaussianBlur(region, region, new OpenCvSharp.Size(kernelSize, kernelSize), 0); 
+            }
+            else if (currentCensorType == CensorType.BlackBox)
+            {
+                // ★★★ 투명키(매젠타 변환 대상인 0-2 범위)와 확실히 구분되는 어두운 색 ★★★
+                region.SetTo(new Scalar(5, 5, 5)); // 투명키 변환 범위(0-2)를 벗어난 어두운 회색
             }
         }
 
@@ -245,11 +252,9 @@ namespace MosaicCensorSystem.Detection
             try
             {
                 Console.WriteLine("🔥 모델 워밍업 시작...");
-                // 640x640 크기의 검은색 더미 이미지를 생성하여 모델에 입력합니다.
                 var dummyInput = new DenseTensor<float>(new float[1 * 3 * 640 * 640], new[] { 1, 3, 640, 640 });
                 var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("images", dummyInput) };
                 
-                // 결과는 필요 없고, 한번 실행하여 모델을 '예열'하는 것 자체가 목적입니다.
                 using (model.Run(inputs)) { }
 
                 Console.WriteLine("✅ 모델 워밍업 완료.");

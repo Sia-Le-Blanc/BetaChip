@@ -160,6 +160,9 @@
   <data name="LabelCensorTypeBlur" xml:space="preserve">
     <value>블러</value>
   </data>
+  <data name="LabelCensorTypeBlackBox" xml:space="preserve">
+    <value>검은 박스</value>
+  </data>
   <data name="LabelCensorStrength" xml:space="preserve">
     <value>검열 강도:</value>
   </data>
@@ -171,6 +174,51 @@
   </data>
   <data name="LabelStickers" xml:space="preserve">
     <value>스티커 활성화</value>
+  </data>
+  
+  <!-- ★★★ 툴팁 텍스트들 추가 ★★★ -->
+  <!-- 버튼 툴팁 -->
+  <data name="TooltipStart" xml:space="preserve">
+    <value>실시간 객체 감지 및 검열을 시작합니다. AI 모델을 사용하여 화면의 민감한 영역을 자동으로 검열처리합니다.</value>
+  </data>
+  <data name="TooltipStop" xml:space="preserve">
+    <value>실행 중인 검열 시스템을 중지합니다. 모든 오버레이 창이 사라집니다.</value>
+  </data>
+  <data name="TooltipTest" xml:space="preserve">
+    <value>화면 캡처가 정상 작동하는지 테스트합니다. capture_test.jpg 파일로 저장됩니다.</value>
+  </data>
+  
+  <!-- 슬라이더 툴팁 -->
+  <data name="TooltipFps" xml:space="preserve">
+    <value>초당 처리할 프레임 수를 설정합니다. 높을수록 부드럽지만 CPU 사용량이 증가합니다. (권장: 15-30)</value>
+  </data>
+  <data name="TooltipStrength" xml:space="preserve">
+    <value>검열 효과의 강도를 조절합니다. 모자이크: 픽셀 크기, 블러: 흐림 정도, 검은박스: 이 설정과 무관하게 완전 차단</value>
+  </data>
+  <data name="TooltipConfidence" xml:space="preserve">
+    <value>AI 모델의 감지 신뢰도 임계값입니다. 낮을수록 더 많이 감지하지만 오탐지가 증가할 수 있습니다. (권장: 0.3-0.5)</value>
+  </data>
+  
+  <!-- 체크박스 툴팁 -->
+  <data name="TooltipDetection" xml:space="preserve">
+    <value>AI 객체 감지 기능을 활성화/비활성화합니다. 비활성화하면 검열 효과도 적용되지 않습니다.</value>
+  </data>
+  <data name="TooltipCensoring" xml:space="preserve">
+    <value>감지된 객체에 검열 효과(모자이크/블러/검은박스)를 적용할지 설정합니다. 감지만 하고 검열하지 않을 때 사용.</value>
+  </data>
+  <data name="TooltipStickers" xml:space="preserve">
+    <value>검열된 영역 위에 재미있는 스티커를 추가로 표시합니다. (후원자 전용 기능)</value>
+  </data>
+  
+  <!-- 라디오 버튼 툴팁 -->
+  <data name="TooltipMosaic" xml:space="preserve">
+    <value>픽셀 단위로 이미지를 확대하여 모자이크 효과를 만듭니다. 전통적인 검열 방식입니다.</value>
+  </data>
+  <data name="TooltipBlur" xml:space="preserve">
+    <value>가우시안 블러를 사용하여 부드럽게 흐리게 만듭니다. 자연스러운 검열 효과를 원할 때 사용합니다.</value>
+  </data>
+  <data name="TooltipBlackBox" xml:space="preserve">
+    <value>감지된 영역을 완전히 검은색으로 덮어버립니다. 가장 확실한 차단 효과를 제공합니다.</value>
   </data>
   
   <!-- 검열 대상 번역 -->
@@ -215,6 +263,50 @@
   </data>
   <data name="Target_여성" xml:space="preserve">
     <value>여성</value>
+  </data>
+  
+  <!-- 타겟 체크박스 툴팁 -->
+  <data name="TooltipTarget_얼굴" xml:space="preserve">
+    <value>사람의 얼굴을 감지하고 검열합니다. 가장 기본적인 검열 대상입니다.</value>
+  </data>
+  <data name="TooltipTarget_가슴" xml:space="preserve">
+    <value>노출된 가슴 부위를 감지하고 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_겨드랑이" xml:space="preserve">
+    <value>겨드랑이 부위를 감지하고 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_보지" xml:space="preserve">
+    <value>여성 생식기를 감지하고 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_발" xml:space="preserve">
+    <value>발 부위를 감지하고 검열합니다. 풋 페티시 관련 콘텐츠 차단용입니다.</value>
+  </data>
+  <data name="TooltipTarget_몸 전체" xml:space="preserve">
+    <value>전신 누드를 감지하고 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_자지" xml:space="preserve">
+    <value>남성 생식기를 감지하고 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_팬티" xml:space="preserve">
+    <value>속옷(팬티)을 감지하고 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_눈" xml:space="preserve">
+    <value>눈 부위만 따로 감지하고 검열합니다. 신원 보호용입니다.</value>
+  </data>
+  <data name="TooltipTarget_손" xml:space="preserve">
+    <value>손 부위를 감지하고 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_교미" xml:space="preserve">
+    <value>성적 행위 장면을 감지하고 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_신발" xml:space="preserve">
+    <value>신발을 감지하고 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_가슴_옷" xml:space="preserve">
+    <value>옷을 입은 상태의 가슴 부위를 감지하고 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_여성" xml:space="preserve">
+    <value>여성의 전체적인 모습을 감지하고 검열합니다.</value>
   </data>
   
   <!-- GPU 상태 번역 (더 명확하게) -->

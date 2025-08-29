@@ -15,7 +15,10 @@ namespace MosaicCensorSystem
         public MosaicApp()
         {
             Root = new Form { Text = "Mosaic Censor System (Sticker-Ready)", Size = new Size(500, 800), MinimumSize = new Size(480, 650), StartPosition = FormStartPosition.CenterScreen };
-            Root.FormClosing += (s, e) => censorService.Dispose();
+            Root.FormClosing += (s, e) => {
+                censorService.Dispose();
+                uiController.Dispose(); // ★★★ 툴팁 리소스 정리 추가 ★★★
+            };
             uiController = new GuiController(Root);
             censorService = new CensorService(uiController);
             ConnectEvents();

@@ -160,6 +160,9 @@
   <data name="LabelCensorTypeBlur" xml:space="preserve">
     <value>Blur</value>
   </data>
+  <data name="LabelCensorTypeBlackBox" xml:space="preserve">
+    <value>Black Box</value>
+  </data>
   <data name="LabelCensorStrength" xml:space="preserve">
     <value>Censor Strength:</value>
   </data>
@@ -171,6 +174,51 @@
   </data>
   <data name="LabelStickers" xml:space="preserve">
     <value>Enable Stickers</value>
+  </data>
+  
+  <!-- ★★★ Tooltip Texts Added ★★★ -->
+  <!-- Button Tooltips -->
+  <data name="TooltipStart" xml:space="preserve">
+    <value>Start real-time object detection and censoring. Uses AI model to automatically detect and censor sensitive areas on screen.</value>
+  </data>
+  <data name="TooltipStop" xml:space="preserve">
+    <value>Stop the running censoring system. All overlay windows will disappear.</value>
+  </data>
+  <data name="TooltipTest" xml:space="preserve">
+    <value>Test if screen capture is working properly. Saves as capture_test.jpg file.</value>
+  </data>
+  
+  <!-- Slider Tooltips -->
+  <data name="TooltipFps" xml:space="preserve">
+    <value>Set frames per second to process. Higher values are smoother but use more CPU. (Recommended: 15-30)</value>
+  </data>
+  <data name="TooltipStrength" xml:space="preserve">
+    <value>Adjust censoring effect intensity. Mosaic: pixel size, Blur: blur level, Black Box: completely blocks regardless of this setting</value>
+  </data>
+  <data name="TooltipConfidence" xml:space="preserve">
+    <value>AI model detection confidence threshold. Lower values detect more but may increase false positives. (Recommended: 0.3-0.5)</value>
+  </data>
+  
+  <!-- Checkbox Tooltips -->
+  <data name="TooltipDetection" xml:space="preserve">
+    <value>Enable/disable AI object detection. When disabled, no censoring effects will be applied.</value>
+  </data>
+  <data name="TooltipCensoring" xml:space="preserve">
+    <value>Apply censoring effects (mosaic/blur/black box) to detected objects. Use when you want detection only without censoring.</value>
+  </data>
+  <data name="TooltipStickers" xml:space="preserve">
+    <value>Display fun stickers over censored areas. (Patreon exclusive feature)</value>
+  </data>
+  
+  <!-- Radio Button Tooltips -->
+  <data name="TooltipMosaic" xml:space="preserve">
+    <value>Creates mosaic effect by enlarging pixels. Traditional censoring method.</value>
+  </data>
+  <data name="TooltipBlur" xml:space="preserve">
+    <value>Uses Gaussian blur for smooth blurring effect. Use when you want natural censoring.</value>
+  </data>
+  <data name="TooltipBlackBox" xml:space="preserve">
+    <value>Completely covers detected areas with black color. Provides the strongest blocking effect.</value>
   </data>
   
   <!-- Censoring Target Translations (더 직관적인 표현) -->
@@ -215,6 +263,50 @@
   </data>
   <data name="Target_여성" xml:space="preserve">
     <value>Female</value>
+  </data>
+  
+  <!-- Target Checkbox Tooltips -->
+  <data name="TooltipTarget_얼굴" xml:space="preserve">
+    <value>Detect and censor human faces. Most basic censoring target.</value>
+  </data>
+  <data name="TooltipTarget_가슴" xml:space="preserve">
+    <value>Detect and censor exposed breast areas.</value>
+  </data>
+  <data name="TooltipTarget_겨드랑이" xml:space="preserve">
+    <value>Detect and censor armpit areas.</value>
+  </data>
+  <data name="TooltipTarget_보지" xml:space="preserve">
+    <value>Detect and censor female genitals.</value>
+  </data>
+  <data name="TooltipTarget_발" xml:space="preserve">
+    <value>Detect and censor feet. For blocking foot fetish content.</value>
+  </data>
+  <data name="TooltipTarget_몸 전체" xml:space="preserve">
+    <value>Detect and censor full body nudity.</value>
+  </data>
+  <data name="TooltipTarget_자지" xml:space="preserve">
+    <value>Detect and censor male genitals.</value>
+  </data>
+  <data name="TooltipTarget_팬티" xml:space="preserve">
+    <value>Detect and censor underwear (panties).</value>
+  </data>
+  <data name="TooltipTarget_눈" xml:space="preserve">
+    <value>Detect and censor eye areas only. For identity protection.</value>
+  </data>
+  <data name="TooltipTarget_손" xml:space="preserve">
+    <value>Detect and censor hand areas.</value>
+  </data>
+  <data name="TooltipTarget_교미" xml:space="preserve">
+    <value>Detect and censor sexual activity scenes.</value>
+  </data>
+  <data name="TooltipTarget_신발" xml:space="preserve">
+    <value>Detect and censor shoes.</value>
+  </data>
+  <data name="TooltipTarget_가슴_옷" xml:space="preserve">
+    <value>Detect and censor clothed breast areas.</value>
+  </data>
+  <data name="TooltipTarget_여성" xml:space="preserve">
+    <value>Detect and censor overall female appearance.</value>
   </data>
   
   <!-- GPU Status Translations (더 명확하게) -->
