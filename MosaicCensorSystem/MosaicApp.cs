@@ -32,7 +32,7 @@ namespace MosaicCensorSystem
         {
             uiController.StartClicked += censorService.Start;
             uiController.StopClicked += censorService.Stop;
-            uiController.TestCaptureClicked += censorService.TestCapture;
+            uiController.CaptureAndSaveClicked += censorService.CaptureAndSave; // ★★★ 변경: TestCaptureClicked → CaptureAndSaveClicked
 
             // 스티커 이벤트 연결
             uiController.StickerToggled += (val) => censorService.UpdateSetting("EnableStickers", val);

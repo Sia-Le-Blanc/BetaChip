@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace MosaicCensorSystem
 {
@@ -13,89 +14,84 @@ namespace MosaicCensorSystem
 
         private static string FindModelPath()
         {
-            // ★★★ 단순하고 확실한 경로들만 시도 ★★★
-            string[] safePaths = {
-                // 1. 가장 안전 - 실행파일 기준 Resources 폴더
+            Console.WriteLine("=== 강화된 ONNX 모델 경로 탐색 시작 ===");
+            
+            // ★★★ 1단계: 기본 경로들 ★★★
+            string[] primaryPaths = {
                 Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "best.onnx"),
-                
-                // 2. WinForms 환경에서 안전
                 Path.Combine(Application.StartupPath, "Resources", "best.onnx"),
-                
-                // 3. 백업 - 실행파일과 같은 폴더에 직접
                 Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "best.onnx"),
-                
-                // 4. 백업 - StartupPath에 직접  
                 Path.Combine(Application.StartupPath, "best.onnx"),
-                
-                // 5. 현재 작업 디렉터리 기준
                 Path.Combine(Environment.CurrentDirectory, "Resources", "best.onnx"),
-                
-                // 6. 단일파일 배포 대응
-                GetAssemblyLocationPath(),
+                Path.Combine(Environment.CurrentDirectory, "best.onnx"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MosaicCensorSystem", "best.onnx"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MosaicCensorSystem", "best.onnx"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MosaicCensorSystem", "best.onnx")
             };
 
-            Console.WriteLine("=== 견고한 ONNX 모델 경로 탐색 시작 ===");
-            
-            foreach (string path in safePaths.Where(p => !string.IsNullOrWhiteSpace(p)))
+            // Assembly 경로 추가
+            string? assemblyPath = GetAssemblyLocationPath();
+            if (!string.IsNullOrEmpty(assemblyPath))
             {
-                try
+                primaryPaths = primaryPaths.Append(assemblyPath).ToArray();
+            }
+
+            // 1단계 탐색
+            foreach (string path in primaryPaths)
+            {
+                if (IsValidModelFile(path)) return path;
+            }
+
+            // ★★★ 2단계: 레지스트리에서 설치 경로 찾기 ★★★
+            string? registryPath = TryGetInstallPathFromRegistry();
+            if (!string.IsNullOrEmpty(registryPath))
+            {
+                string[] registryPaths = {
+                    Path.Combine(registryPath, "Resources", "best.onnx"),
+                    Path.Combine(registryPath, "best.onnx")
+                };
+                
+                foreach (string path in registryPaths)
                 {
-                    string fullPath = Path.GetFullPath(path);
-                    Console.WriteLine($"시도: {fullPath}");
-                    
-                    // ★★★ 파일 존재 여부와 유효성을 동시에 확인 ★★★
-                    if (IsValidModelFile(fullPath))
-                    {
-                        Console.WriteLine($"✅ 모델 발견: {fullPath}");
-                        return fullPath;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"⚠️ 경로 오류 ({path}): {ex.Message}");
+                    if (IsValidModelFile(path)) return path;
                 }
             }
 
-            // 모든 안전한 경로에서 실패한 경우 상세 진단
+            // ★★★ 3단계: 백업에서 복구 시도 ★★★
+            string? recoveredPath = TryRecoverFromBackup();
+            if (!string.IsNullOrEmpty(recoveredPath)) return recoveredPath;
+
+            // ★★★ 4단계: 주요 디렉토리 검색 ★★★
+            string? foundPath = TryLimitedDriveSearch();
+            if (!string.IsNullOrEmpty(foundPath)) return foundPath;
+
+            // 모든 시도 실패
             DiagnoseEnvironment();
-            
             Console.WriteLine("❌ 모든 경로에서 유효한 모델을 찾을 수 없음");
-            return safePaths[0]; // 기본값 반환
+            
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "best.onnx");
         }
 
-        // ★★★ 유효한 모델 파일인지 확인 (존재 여부 + 크기 체크) ★★★
         private static bool IsValidModelFile(string filePath)
         {
             try
             {
-                if (!File.Exists(filePath)) return false;
+                if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath)) return false;
                 
                 var fileInfo = new FileInfo(filePath);
-                
-                // 0바이트 파일은 잘못된 파일 (빌드 실패 등으로 인한)
-                if (fileInfo.Length == 0)
+                if (fileInfo.Length < 1024 * 1024)
                 {
-                    Console.WriteLine($"⚠️ 파일이 비어있음: {filePath}");
+                    Console.WriteLine($"⚠️ 파일이 너무 작음 ({fileInfo.Length:N0} bytes): {filePath}");
                     return false;
                 }
                 
-                // ONNX 파일은 최소 몇 KB는 되어야 함
-                if (fileInfo.Length < 1024)
+                using var stream = File.OpenRead(filePath);
+                var buffer = new byte[8];
+                int bytesRead = stream.Read(buffer, 0, 8);
+                if (bytesRead >= 8)
                 {
-                    Console.WriteLine($"⚠️ 파일이 너무 작음 ({fileInfo.Length} bytes): {filePath}");
-                    return false;
-                }
-                
-                // ★★★ 파일 읽기 권한 확인 ★★★
-                using (var stream = File.OpenRead(filePath))
-                {
-                    var buffer = new byte[4];
-                    int bytesRead = stream.Read(buffer, 0, 4);
-                    if (bytesRead > 0)
-                    {
-                        Console.WriteLine($"✅ 유효한 모델 파일: {fileInfo.Length:N0} bytes");
-                        return true;
-                    }
+                    Console.WriteLine($"✅ 유효한 모델 파일 발견: {fileInfo.Length:N0} bytes - {filePath}");
+                    return true;
                 }
                 
                 return false;
@@ -107,19 +103,126 @@ namespace MosaicCensorSystem
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ 파일 검증 중 오류: {filePath} - {ex.Message}");
+                Console.WriteLine($"❌ 파일 검증 실패: {filePath} - {ex.Message}");
                 return false;
             }
         }
 
-        // ★★★ 단일파일 배포 대응 경로 ★★★
-        private static string GetAssemblyLocationPath()
+        private static string? TryGetInstallPathFromRegistry()
         {
             try
             {
-                var location = Assembly.GetExecutingAssembly().Location;
+                using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+                if (key == null) return null;
+
+                foreach (string subKeyName in key.GetSubKeyNames())
+                {
+                    using var subKey = key.OpenSubKey(subKeyName);
+                    if (subKey == null) continue;
+
+                    string? displayName = subKey.GetValue("DisplayName") as string;
+                    if (string.IsNullOrEmpty(displayName)) continue;
+
+                    if (displayName.Contains("MosaicCensorSystem") || 
+                        displayName.Contains("BetaChip") ||
+                        displayName.Contains("Mosaic Censor"))
+                    {
+                        string? installLocation = subKey.GetValue("InstallLocation") as string;
+                        if (!string.IsNullOrEmpty(installLocation) && Directory.Exists(installLocation))
+                        {
+                            Console.WriteLine($"📍 레지스트리에서 설치 경로 발견: {installLocation}");
+                            return installLocation;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ 레지스트리 검색 실패: {ex.Message}");
+            }
+            return null;
+        }
+
+        private static string? TryRecoverFromBackup()
+        {
+            try
+            {
+                string userBackupPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
+                    "MosaicCensorSystem", "best.onnx");
+                    
+                if (IsValidModelFile(userBackupPath))
+                {
+                    string mainPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "best.onnx");
+                    string? mainDir = Path.GetDirectoryName(mainPath);
+                    
+                    if (!string.IsNullOrEmpty(mainDir) && !Directory.Exists(mainDir))
+                    {
+                        Directory.CreateDirectory(mainDir);
+                    }
+                    
+                    File.Copy(userBackupPath, mainPath, true);
+                    Console.WriteLine($"🔄 백업에서 모델 복구 성공: {userBackupPath} → {mainPath}");
+                    return mainPath;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ 백업 복구 실패: {ex.Message}");
+            }
+            return null;
+        }
+
+        private static string? TryLimitedDriveSearch()
+        {
+            try
+            {
+                Console.WriteLine("🔍 제한적 드라이브 검색 시작...");
                 
-                // .NET 5+ 단일파일 배포에서는 Location이 빈 문자열일 수 있음
+                string[] searchDirs = {
+                    @"C:\Program Files\MosaicCensorSystem",
+                    @"C:\Program Files\BetaChip",
+                    @"C:\Program Files (x86)\MosaicCensorSystem",
+                    @"C:\Program Files (x86)\BetaChip",
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MosaicCensorSystem"),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MosaicCensorSystem"),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "MosaicCensorSystem")
+                };
+                
+                foreach (string searchDir in searchDirs)
+                {
+                    if (Directory.Exists(searchDir))
+                    {
+                        string[] possibleFiles = {
+                            Path.Combine(searchDir, "best.onnx"),
+                            Path.Combine(searchDir, "Resources", "best.onnx")
+                        };
+                        
+                        foreach (string file in possibleFiles)
+                        {
+                            if (IsValidModelFile(file))
+                            {
+                                Console.WriteLine($"🎯 드라이브 검색에서 발견: {file}");
+                                return file;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ 드라이브 검색 실패: {ex.Message}");
+            }
+            
+            return null;
+        }
+
+        private static string? GetAssemblyLocationPath()
+        {
+            try
+            {
+                string? location = Assembly.GetExecutingAssembly().Location;
+                
                 if (string.IsNullOrEmpty(location))
                 {
                     location = Environment.ProcessPath;
@@ -127,7 +230,7 @@ namespace MosaicCensorSystem
                 
                 if (!string.IsNullOrEmpty(location))
                 {
-                    var dir = Path.GetDirectoryName(location);
+                    string? dir = Path.GetDirectoryName(location);
                     if (!string.IsNullOrEmpty(dir))
                     {
                         return Path.Combine(dir, "Resources", "best.onnx");
@@ -151,14 +254,16 @@ namespace MosaicCensorSystem
                 Console.WriteLine($"StartupPath: {Application.StartupPath}");
                 Console.WriteLine($"CurrentDirectory: {Environment.CurrentDirectory}");
                 Console.WriteLine($"ExecutingAssembly: {Assembly.GetExecutingAssembly().Location}");
-                Console.WriteLine($"ProcessPath: {Environment.ProcessPath}");
+                Console.WriteLine($"ProcessPath: {Environment.ProcessPath ?? "null"}");
+                Console.WriteLine($"UserName: {Environment.UserName}");
+                Console.WriteLine($"MachineName: {Environment.MachineName}");
+                Console.WriteLine($"OS Version: {Environment.OSVersion}");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"진단 정보 수집 실패: {ex.Message}");
             }
             
-            // Resources 디렉터리 존재 여부 확인
             string[] resourceDirs = {
                 Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources"),
                 Path.Combine(Application.StartupPath, "Resources"),
@@ -177,8 +282,18 @@ namespace MosaicCensorSystem
                         var onnxFiles = Directory.GetFiles(dir, "*.onnx");
                         Console.WriteLine($"   ONNX 파일들: {string.Join(", ", onnxFiles.Select(Path.GetFileName))}");
                         
-                        var allFiles = Directory.GetFiles(dir);
-                        Console.WriteLine($"   모든 파일들: {string.Join(", ", allFiles.Select(Path.GetFileName))}");
+                        foreach (var file in onnxFiles)
+                        {
+                            try
+                            {
+                                var info = new FileInfo(file);
+                                Console.WriteLine($"   {Path.GetFileName(file)}: {info.Length:N0} bytes");
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"   {Path.GetFileName(file)}: 파일 정보 읽기 실패 - {ex.Message}");
+                            }
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -191,7 +306,6 @@ namespace MosaicCensorSystem
         [STAThread]
         static void Main()
         {
-            // ★★★ 전역 예외 처리 ★★★
             AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
             {
                 var ex = e.ExceptionObject as Exception;
@@ -212,27 +326,25 @@ namespace MosaicCensorSystem
 
             try
             {
-                // ★★★ 프로그램 시작 전 모델 파일 필수 체크 ★★★
                 Console.WriteLine($"최종 ONNX 모델 경로: {ONNX_MODEL_PATH}");
                 
                 if (!IsValidModelFile(ONNX_MODEL_PATH))
                 {
-                    // 사용자에게 명확한 안내 제공
                     string message = "ONNX 모델 파일을 찾을 수 없거나 손상되었습니다.\n\n" +
                                    "필요한 파일: best.onnx\n" +
                                    "권장 위치:\n" +
                                    $"• {Path.Combine(Application.StartupPath, "Resources")}\n" +
                                    $"• {Application.StartupPath}\n\n" +
-                                   "파일을 올바른 위치에 배치한 후 다시 실행해주세요.";
+                                   "파일을 올바른 위치에 배치한 후 다시 실행해주세요.\n\n" +
+                                   "또는 프로그램을 재설치해보세요.";
                     
                     MessageBox.Show(message, "모델 파일 오류", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    
-                    // ★★★ 파일이 없어도 프로그램은 실행하되, 사용자에게 알림 ★★★
                     Console.WriteLine("⚠️ 모델 파일 없이 프로그램을 시작합니다. 일부 기능이 제한될 수 있습니다.");
                 }
                 else
                 {
-                    Console.WriteLine($"✅ 모델 파일 검증 완료: {new FileInfo(ONNX_MODEL_PATH).Length:N0} bytes");
+                    var fileInfo = new FileInfo(ONNX_MODEL_PATH);
+                    Console.WriteLine($"✅ 모델 파일 검증 완료: {fileInfo.Length:N0} bytes");
                 }
                 
                 var app = new MosaicApp();
@@ -245,7 +357,7 @@ namespace MosaicCensorSystem
                 
                 try
                 {
-                    File.WriteAllText("init_error.log", $"{DateTime.Now}: {ex.ToString()}");
+                    File.WriteAllText("init_error.log", $"{DateTime.Now}: {ex}");
                 }
                 catch { }
             }

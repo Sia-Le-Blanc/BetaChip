@@ -1,6 +1,7 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -52,6 +53,15 @@ namespace MosaicCensorSystem
         private readonly List<Mat> wideStickers = new();
         private readonly Dictionary<int, StickerInfo> trackedStickers = new();
 
+        // ★★★ 스크린샷 저장 관련 ★★★
+        private static readonly string SCREENSHOTS_FOLDER = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), 
+            "BetaChip Screenshots");
+        
+        private static readonly string DESKTOP_SHORTCUT = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), 
+            "BetaChip 스크린샷.lnk");
+
         public CensorService(GuiController uiController)
         {
             ui = uiController;
@@ -73,6 +83,9 @@ namespace MosaicCensorSystem
             ui.LogMessage($"🖥️ 무료 버전: 메인 모니터만 지원");
 #endif
 
+            // ★★★ 스크린샷 폴더 및 바로가기 설정 ★★★
+            SetupScreenshotFolder();
+
             LoadStickers();
 
             // 모델 워밍업
@@ -84,6 +97,102 @@ namespace MosaicCensorSystem
                     processor.WarmUpModel();
                     ui.LogMessage("✅ 모델 워밍업 완료.");
                 });
+            }
+        }
+
+        // ★★★ 스크린샷 폴더 및 바탕화면 바로가기 설정 ★★★
+        private void SetupScreenshotFolder()
+        {
+            try
+            {
+                // 스크린샷 폴더 생성
+                if (!Directory.Exists(SCREENSHOTS_FOLDER))
+                {
+                    Directory.CreateDirectory(SCREENSHOTS_FOLDER);
+                    ui.LogMessage($"📁 스크린샷 폴더 생성: {SCREENSHOTS_FOLDER}");
+                }
+
+                // 바탕화면 바로가기 생성 (없을 때만)
+                if (!File.Exists(DESKTOP_SHORTCUT))
+                {
+                    CreateDesktopShortcut();
+                }
+            }
+            catch (Exception ex)
+            {
+                ui.LogMessage($"⚠️ 스크린샷 폴더 설정 실패: {ex.Message}");
+            }
+        }
+
+        // ★★★ 바탕화면 바로가기 생성 ★★★
+        private void CreateDesktopShortcut()
+        {
+            try
+            {
+                // 방법 1: 간단한 텍스트 파일 바로가기 (항상 작동)
+                string simpleShortcut = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+                    "BetaChip 스크린샷 폴더.txt");
+
+                if (!File.Exists(simpleShortcut))
+                {
+                    File.WriteAllText(simpleShortcut, 
+                        $"BetaChip 스크린샷 저장 폴더:\n{SCREENSHOTS_FOLDER}\n\n" +
+                        "위 경로를 복사해서 탐색기 주소창에 붙여넣으세요.\n\n" +
+                        "또는 이 파일과 같은 폴더에 있는 'BetaChip 스크린샷.lnk' 파일을 더블클릭하세요.");
+                    ui.LogMessage($"📝 바탕화면에 폴더 경로 파일 생성: {simpleShortcut}");
+                }
+
+                // 방법 2: PowerShell을 사용한 바로가기 생성
+                TryCreateWindowsShortcut();
+            }
+            catch (Exception ex)
+            {
+                ui.LogMessage($"⚠️ 바탕화면 바로가기 생성 실패: {ex.Message}");
+            }
+        }
+
+        private void TryCreateWindowsShortcut()
+        {
+            try
+            {
+                // PowerShell을 사용한 바로가기 생성 (Windows 10/11에서 안정적)
+                string psScript = $@"
+$WshShell = New-Object -comObject WScript.Shell
+$Shortcut = $WshShell.CreateShortcut('{DESKTOP_SHORTCUT}')
+$Shortcut.TargetPath = '{SCREENSHOTS_FOLDER}'
+$Shortcut.Description = 'BetaChip 검열된 스크린샷 모음'
+$Shortcut.Save()
+";
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -Command \"{psScript}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+
+                using var process = Process.Start(psi);
+                if (process != null)
+                {
+                    process.WaitForExit(5000); // 5초 타임아웃
+
+                    if (process.ExitCode == 0 && File.Exists(DESKTOP_SHORTCUT))
+                    {
+                        ui.LogMessage($"🔗 Windows 바로가기 생성 완료: {DESKTOP_SHORTCUT}");
+                    }
+                    else
+                    {
+                        ui.LogMessage("⚠️ Windows 바로가기 생성 실패, 텍스트 파일로 대체됨");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ui.LogMessage($"⚠️ PowerShell 바로가기 생성 실패: {ex.Message}");
             }
         }
 
@@ -286,6 +395,98 @@ namespace MosaicCensorSystem
             }
         }
 
+        // ★★★ 캡처 저장 기능 (기존 TestCapture 대체) ★★★
+        public void CaptureAndSave()
+        {
+            if (!isRunning)
+            {
+                ui.LogMessage("❌ 시스템이 실행 중이 아닙니다. 먼저 시작 버튼을 눌러주세요.");
+                MessageBox.Show("검열 시스템이 실행 중일 때만 캡처 저장이 가능합니다.", 
+                              "알림", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                ui.LogMessage("📸 검열된 화면 캡처 시작...");
+                
+                // 현재 화면 캡처
+                using Mat rawFrame = capturer.GetFrame();
+                if (rawFrame == null || rawFrame.Empty())
+                {
+                    ui.LogMessage("❌ 화면 캡처 실패: 빈 프레임이 반환되었습니다.");
+                    return;
+                }
+
+                // 검열 처리 적용
+                using Mat processedFrame = rawFrame.Clone();
+                
+                if (enableDetection)
+                {
+                    List<Detection.Detection> detections = processor.DetectObjects(rawFrame);
+                    foreach (var detection in detections)
+                    {
+                        // 검열 효과 적용
+                        if (enableCensoring) 
+                        {
+                            processor.ApplySingleCensorOptimized(processedFrame, detection);
+                        }
+
+                        // 스티커 적용 (후원자 기능)
+                        if (enableStickers && (squareStickers.Count > 0 || wideStickers.Count > 0))
+                        {
+                            if (!trackedStickers.TryGetValue(detection.TrackId, out var stickerInfo) || 
+                                (DateTime.Now - stickerInfo.AssignedTime).TotalSeconds > 30)
+                            {
+                                var stickerList = (float)detection.Width / detection.Height > 1.2f ? wideStickers : squareStickers;
+                                if (stickerList.Count > 0)
+                                {
+                                    trackedStickers[detection.TrackId] = new StickerInfo
+                                    {
+                                        Sticker = stickerList[random.Next(stickerList.Count)],
+                                        AssignedTime = DateTime.Now
+                                    };
+                                }
+                            }
+
+                            if (trackedStickers.TryGetValue(detection.TrackId, out stickerInfo) && 
+                                stickerInfo.Sticker != null && !stickerInfo.Sticker.IsDisposed)
+                            {
+                                BlendStickerOnMosaic(processedFrame, detection, stickerInfo.Sticker);
+                            }
+                        }
+                    }
+                }
+
+                // 파일명 생성 (타임스탬프 포함)
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string fileName = $"BetaChip_{timestamp}.jpg";
+                string filePath = Path.Combine(SCREENSHOTS_FOLDER, fileName);
+
+                // 이미지 저장
+                processedFrame.SaveImage(filePath);
+                
+                // 성공 메시지
+                ui.LogMessage($"✅ 캡처 저장 완료! 파일: {fileName}");
+                ui.LogMessage($"📁 저장 위치: {SCREENSHOTS_FOLDER}");
+                
+                MessageBox.Show(
+                    $"검열된 스크린샷이 저장되었습니다!\n\n" +
+                    $"파일명: {fileName}\n" +
+                    $"크기: {processedFrame.Width}x{processedFrame.Height}\n\n" +
+                    $"바탕화면의 'BetaChip 스크린샷' 바로가기로 폴더에 접근할 수 있습니다.", 
+                    "캡처 저장 완료", 
+                    MessageBoxButtons.OK, 
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                ui.LogMessage($"❌ 캡처 저장 중 오류: {ex.Message}");
+                MessageBox.Show($"캡처 저장 중 오류가 발생했습니다:\n{ex.Message}", 
+                              "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         public void UpdateSetting(string key, object value)
         {
             switch (key)
@@ -312,29 +513,6 @@ namespace MosaicCensorSystem
             ui.LogMessage($"🖥️ 모니터 {index + 1} {(enabled ? "활성화" : "비활성화")}");
         }
 #endif
-
-        public void TestCapture()
-        {
-            try
-            {
-                using Mat testFrame = capturer.GetFrame();
-                if (testFrame != null && !testFrame.Empty())
-                {
-                    string testPath = Path.Combine(Environment.CurrentDirectory, "capture_test.jpg");
-                    testFrame.SaveImage(testPath);
-                    ui.LogMessage($"✅ 캡처 테스트 성공! 크기: {testFrame.Width}x{testFrame.Height}");
-                    MessageBox.Show($"캡처 테스트 성공! 이미지가 {testPath}에 저장되었습니다.", "성공", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-                else
-                {
-                    ui.LogMessage($"❌ 캡처 테스트 실패: 빈 프레임이 반환되었습니다.");
-                }
-            }
-            catch (Exception ex)
-            {
-                ui.LogMessage($"❌ 캡처 테스트 오류: {ex.Message}");
-            }
-        }
 
         public void Dispose()
         {

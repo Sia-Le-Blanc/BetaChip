@@ -140,8 +140,9 @@
   <data name="ButtonStop" xml:space="preserve">
     <value>Stop</value>
   </data>
-  <data name="ButtonTest" xml:space="preserve">
-    <value>Capture Test</value>
+  <!-- ★★★ Changed: ButtonTest → ButtonCaptureAndSave ★★★ -->
+  <data name="ButtonCaptureAndSave" xml:space="preserve">
+    <value>Save Capture</value>
   </data>
   
   <!-- Label Texts -->
@@ -176,7 +177,7 @@
     <value>Enable Stickers</value>
   </data>
   
-  <!-- ★★★ Tooltip Texts Added ★★★ -->
+  <!-- ★★★ Tooltip Texts ★★★ -->
   <!-- Button Tooltips -->
   <data name="TooltipStart" xml:space="preserve">
     <value>Start real-time object detection and censoring. Uses AI model to automatically detect and censor sensitive areas on screen.</value>
@@ -184,8 +185,9 @@
   <data name="TooltipStop" xml:space="preserve">
     <value>Stop the running censoring system. All overlay windows will disappear.</value>
   </data>
-  <data name="TooltipTest" xml:space="preserve">
-    <value>Test if screen capture is working properly. Saves as capture_test.jpg file.</value>
+  <!-- ★★★ Changed: TooltipTest → TooltipCaptureAndSave ★★★ -->
+  <data name="TooltipCaptureAndSave" xml:space="preserve">
+    <value>Save the current censored screen as an image file. Only available when the system is running. Creates a screenshot with AI detection and censoring effects applied.</value>
   </data>
   
   <!-- Slider Tooltips -->

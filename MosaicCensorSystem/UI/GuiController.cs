@@ -23,7 +23,7 @@ namespace MosaicCensorSystem.UI
         public event Action<float> ConfidenceChanged;
         public event Action StartClicked;
         public event Action StopClicked;
-        public event Action TestCaptureClicked;
+        public event Action CaptureAndSaveClicked; // ★★★ 변경: TestCaptureClicked → CaptureAndSaveClicked
         public event Action<List<string>> TargetsChanged;
 
         // --- UI 컨트롤들을 멤버 변수로 선언 ---
@@ -32,7 +32,7 @@ namespace MosaicCensorSystem.UI
         private ComboBox languageComboBox;
         private Label statusLabel;
         private TextBox logTextBox;
-        private Button startButton, stopButton, testButton;
+        private Button startButton, stopButton, captureButton; // ★★★ 변경: testButton → captureButton
         private GroupBox controlGroup, settingsGroup, logGroup, targetsGroup;
         private Label gpuStatusLabel;
         private Label fpsLabel, strengthLabel, confidenceLabel;
@@ -137,8 +137,9 @@ namespace MosaicCensorSystem.UI
                 Location = new Point(160, 25),
                 Enabled = false
             };
-            testButton = new Button {
-                BackColor = Color.DarkBlue,
+            // ★★★ 변경: testButton → captureButton, 색상도 변경 ★★★
+            captureButton = new Button {
+                BackColor = Color.DarkOrange,
                 ForeColor = Color.White,
                 Font = new Font("Arial", 10, FontStyle.Bold),
                 Size = new Size(120, 40),
@@ -147,9 +148,9 @@ namespace MosaicCensorSystem.UI
             
             startButton.Click += (s, e) => StartClicked?.Invoke();
             stopButton.Click += (s, e) => StopClicked?.Invoke();
-            testButton.Click += (s, e) => TestCaptureClicked?.Invoke();
+            captureButton.Click += (s, e) => CaptureAndSaveClicked?.Invoke(); // ★★★ 변경
             
-            controlGroup.Controls.AddRange(new Control[] { startButton, stopButton, testButton });
+            controlGroup.Controls.AddRange(new Control[] { startButton, stopButton, captureButton });
             parent.Controls.Add(controlGroup);
             y += 90;
 
@@ -313,7 +314,7 @@ namespace MosaicCensorSystem.UI
                 controlGroup.Text = GetLocalizedString("GroupControls");
                 startButton.Text = GetLocalizedString("ButtonStart");
                 stopButton.Text = GetLocalizedString("ButtonStop");
-                testButton.Text = GetLocalizedString("ButtonTest");
+                captureButton.Text = GetLocalizedString("ButtonCaptureAndSave"); // ★★★ 변경
                 
                 settingsGroup.Text = GetLocalizedString("GroupSettings");
                 fpsLabel.Text = GetLocalizedString("LabelFps");
@@ -380,7 +381,7 @@ namespace MosaicCensorSystem.UI
                 // 버튼 툴팁
                 toolTip.SetToolTip(startButton, GetLocalizedString("TooltipStart"));
                 toolTip.SetToolTip(stopButton, GetLocalizedString("TooltipStop"));
-                toolTip.SetToolTip(testButton, GetLocalizedString("TooltipTest"));
+                toolTip.SetToolTip(captureButton, GetLocalizedString("TooltipCaptureAndSave")); // ★★★ 변경
 
                 // 슬라이더 툴팁
                 toolTip.SetToolTip(fpsSlider, GetLocalizedString("TooltipFps"));

@@ -140,8 +140,9 @@
   <data name="ButtonStop" xml:space="preserve">
     <value>중지</value>
   </data>
-  <data name="ButtonTest" xml:space="preserve">
-    <value>캡처 테스트</value>
+  <!-- ★★★ 변경: ButtonTest → ButtonCaptureAndSave ★★★ -->
+  <data name="ButtonCaptureAndSave" xml:space="preserve">
+    <value>캡처 저장</value>
   </data>
   
   <!-- 레이블 텍스트들 -->
@@ -176,7 +177,7 @@
     <value>스티커 활성화</value>
   </data>
   
-  <!-- ★★★ 툴팁 텍스트들 추가 ★★★ -->
+  <!-- ★★★ 툴팁 텍스트들 ★★★ -->
   <!-- 버튼 툴팁 -->
   <data name="TooltipStart" xml:space="preserve">
     <value>실시간 객체 감지 및 검열을 시작합니다. AI 모델을 사용하여 화면의 민감한 영역을 자동으로 검열처리합니다.</value>
@@ -184,8 +185,9 @@
   <data name="TooltipStop" xml:space="preserve">
     <value>실행 중인 검열 시스템을 중지합니다. 모든 오버레이 창이 사라집니다.</value>
   </data>
-  <data name="TooltipTest" xml:space="preserve">
-    <value>화면 캡처가 정상 작동하는지 테스트합니다. capture_test.jpg 파일로 저장됩니다.</value>
+  <!-- ★★★ 변경: TooltipTest → TooltipCaptureAndSave ★★★ -->
+  <data name="TooltipCaptureAndSave" xml:space="preserve">
+    <value>현재 검열된 화면을 이미지 파일로 저장합니다. 시스템이 실행 중일 때만 사용 가능하며, AI 검출 및 검열 효과가 적용된 스크린샷을 생성합니다.</value>
   </data>
   
   <!-- 슬라이더 툴팁 -->
