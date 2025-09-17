@@ -78,10 +78,10 @@ namespace MosaicCensorSystem.Capture
         private const int BI_RGB = 0;
         #endregion
 
-        private readonly int width;
-        private readonly int height;
-        private readonly int virtualX;
-        private readonly int virtualY;
+        private int width;
+        private int height;
+        private int virtualX;
+        private int virtualY;
         private IntPtr hDesktopWnd;
         private IntPtr hDesktopDC;
         private IntPtr hMemoryDC;
@@ -90,17 +90,45 @@ namespace MosaicCensorSystem.Capture
         private IntPtr pPixelData; // 픽셀 데이터 메모리 포인터
         private bool disposed = false;
 
+        // ★★★ 새로 추가: 개별 모니터 캡처 지원 ★★★
+        private readonly Rectangle? specificMonitorBounds;
+
         // DPI 스케일링 정보
         public float DpiScaleX { get; private set; }
         public float DpiScaleY { get; private set; }
 
+        // ★★★ 기존 생성자: 전체 가상 데스크톱 캡처 ★★★
         public ScreenCapture()
         {
-            // 가상 데스크톱 전체 크기 획득 (멀티 모니터 지원)
+            specificMonitorBounds = null;
+            
+            // 전체 가상 데스크톱 캡처
             virtualX = GetSystemMetrics(SM_XVIRTUALSCREEN);
             virtualY = GetSystemMetrics(SM_YVIRTUALSCREEN);
             width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
             height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+            Console.WriteLine($"가상 데스크톱 물리적 해상도: {width}x{height} at ({virtualX}, {virtualY})");
+            
+            InitializeCapture();
+        }
+
+        // ★★★ 새 생성자: 특정 모니터만 캡처 ★★★
+        public ScreenCapture(Rectangle monitorBounds)
+        {
+            specificMonitorBounds = monitorBounds;
+            
+            // 특정 모니터만 캡처
+            virtualX = monitorBounds.X;
+            virtualY = monitorBounds.Y;
+            width = monitorBounds.Width;
+            height = monitorBounds.Height;
+            Console.WriteLine($"개별 모니터 캡처 초기화: {width}x{height} at ({virtualX}, {virtualY})");
+            
+            InitializeCapture();
+        }
+
+        private void InitializeCapture()
+        {
 
             // DPI 정보 획득
             IntPtr dc = GetDC(IntPtr.Zero);
@@ -111,7 +139,6 @@ namespace MosaicCensorSystem.Capture
             DpiScaleX = dpiX / 96.0f;
             DpiScaleY = dpiY / 96.0f;
 
-            Console.WriteLine($"가상 데스크톱 물리적 해상도: {width}x{height} at ({virtualX}, {virtualY})");
             Console.WriteLine($"DPI 스케일: {DpiScaleX:F2}x{DpiScaleY:F2}");
 
             hDesktopWnd = GetDesktopWindow();
@@ -136,7 +163,7 @@ namespace MosaicCensorSystem.Capture
         {
             if (disposed) return null;
             
-            // 가상 데스크톱 전체 영역 캡처 (멀티 모니터 지원)
+            // 지정된 영역 캡처 (전체 또는 특정 모니터)
             BitBlt(hMemoryDC, 0, 0, width, height, hDesktopDC, virtualX, virtualY, SRCCOPY);
 
             // Bitmap 객체 변환 없이, 메모리 포인터(pPixelData)로 직접 Mat 객체를 생성합니다.

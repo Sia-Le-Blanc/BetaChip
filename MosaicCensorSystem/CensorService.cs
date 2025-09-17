@@ -88,6 +88,11 @@ namespace MosaicCensorSystem
 
             LoadStickers();
 
+#if PATREON_VERSION
+            // ★★★ 멀티모니터 매니저에 프로세서와 스티커 전달 ★★★
+            multiMonitorManager.Initialize(processor, squareStickers, wideStickers);
+#endif
+
             // 모델 워밍업
             if (processor.IsModelLoaded())
             {
@@ -230,25 +235,28 @@ $Shortcut.Save()
             
             // ★★★ 조건부 오버레이 표시 ★★★
 #if PATREON_VERSION
+            // ★★★ 후원자 버전: 각 모니터별 개별 처리 시작 ★★★
+            multiMonitorManager.UpdateSettings(enableDetection, enableCensoring, enableStickers, targetFPS);
             multiMonitorManager.ShowOverlays();
+            ui.LogMessage("🖥️ 멀티모니터 개별 처리 시작됨");
 #else
+            // ★★★ 무료 버전: 기존 방식 유지 ★★★
             singleOverlay.Show();
-#endif
-
             processThread = new Thread(ProcessingLoop) { IsBackground = true, Name = "CensorProcessingThread" };
             processThread.Start();
+#endif
         }
 
         public void Stop()
         {
             if (!isRunning) return;
             isRunning = false;
-            processThread?.Join(1000);
             
             // ★★★ 조건부 오버레이 숨김 ★★★
 #if PATREON_VERSION
             multiMonitorManager.HideOverlays();
 #else
+            processThread?.Join(1000);
             singleOverlay.Hide();
 #endif
 
@@ -256,6 +264,8 @@ $Shortcut.Save()
             ui.UpdateStatus("⭕ 시스템 대기 중", Color.Red);
         }
 
+#if !PATREON_VERSION
+        // ★★★ 무료 버전용 기존 처리 루프 (단일 모니터) ★★★
         private void ProcessingLoop()
         {
             while (isRunning)
@@ -273,7 +283,7 @@ $Shortcut.Save()
                         // 1단계: 모자이크 적용
                         if (enableCensoring) processor.ApplySingleCensorOptimized(displayFrame, detection);
 
-                        // 2단계: 스티커를 모자이크 위에 블렌딩
+                        // 2단계: 스티커를 모자이크 위에 블렌딩 (무료버전에서는 스티커 없음)
                         if (enableStickers && (squareStickers.Count > 0 || wideStickers.Count > 0))
                         {
                             // 스티커 할당/업데이트
@@ -301,12 +311,7 @@ $Shortcut.Save()
                     }
                 }
 
-                // ★★★ 조건부 프레임 업데이트 ★★★
-#if PATREON_VERSION
-                multiMonitorManager.UpdateFrames(displayFrame);
-#else
                 singleOverlay.UpdateFrame(displayFrame);
-#endif
                 
                 var elapsedMs = (DateTime.Now - frameStart).TotalMilliseconds;
                 int delay = (1000 / targetFPS) - (int)elapsedMs;
@@ -394,6 +399,7 @@ $Shortcut.Save()
                 ui.LogMessage($"🚨 스티커 블렌딩 오류: {ex.Message}");
             }
         }
+#endif
 
         // ★★★ 캡처 저장 기능 (기존 TestCapture 대체) ★★★
         public void CaptureAndSave()
@@ -449,11 +455,13 @@ $Shortcut.Save()
                                 }
                             }
 
+#if !PATREON_VERSION
                             if (trackedStickers.TryGetValue(detection.TrackId, out stickerInfo) && 
                                 stickerInfo.Sticker != null && !stickerInfo.Sticker.IsDisposed)
                             {
                                 BlendStickerOnMosaic(processedFrame, detection, stickerInfo.Sticker);
                             }
+#endif
                         }
                     }
                 }
@@ -491,12 +499,30 @@ $Shortcut.Save()
         {
             switch (key)
             {
-                case "TargetFPS": targetFPS = (int)value; break;
-                case "EnableDetection": enableDetection = (bool)value; break;
-                case "EnableCensoring": enableCensoring = (bool)value; break;
+                case "TargetFPS": 
+                    targetFPS = (int)value;
+#if PATREON_VERSION
+                    multiMonitorManager?.UpdateSettings(enableDetection, enableCensoring, enableStickers, targetFPS);
+#endif
+                    break;
+                case "EnableDetection": 
+                    enableDetection = (bool)value;
+#if PATREON_VERSION
+                    multiMonitorManager?.UpdateSettings(enableDetection, enableCensoring, enableStickers, targetFPS);
+#endif
+                    break;
+                case "EnableCensoring": 
+                    enableCensoring = (bool)value;
+#if PATREON_VERSION
+                    multiMonitorManager?.UpdateSettings(enableDetection, enableCensoring, enableStickers, targetFPS);
+#endif
+                    break;
                 case "EnableStickers": 
                     enableStickers = (bool)value;
                     ui.LogMessage($"🎯 스티커 기능 {(enableStickers ? "활성화" : "비활성화")}");
+#if PATREON_VERSION
+                    multiMonitorManager?.UpdateSettings(enableDetection, enableCensoring, enableStickers, targetFPS);
+#endif
                     break;
                 case "CensorType": processor.SetCensorType((CensorType)value); break;
                 case "Strength": processor.SetStrength((int)value); break;
