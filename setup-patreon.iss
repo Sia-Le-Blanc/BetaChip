@@ -3,7 +3,7 @@
 
 #define MyAppName "BetaChip" ; 레지스트리 키 공유를 위해 내부 이름은 통일
 #define MyAppDisplayName "BetaChip - 후원자용" ; 사용자에게 보여지는 이름
-**#define MyAppVersion "2.4.2-Patreon"**
+#define MyAppVersion "2.4.2-Patreon"
 #define MyAppPublisher "Sia"
 #define MyAppURL "https://github.com/Sia-Le-Blanc/BetaChip"
 #define MyAppExeName "MosaicCensorSystem.exe"

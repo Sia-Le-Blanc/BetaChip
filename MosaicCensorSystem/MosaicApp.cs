@@ -17,22 +17,22 @@ namespace MosaicCensorSystem
             Root = new Form { Text = "Mosaic Censor System (Sticker-Ready)", Size = new Size(500, 800), MinimumSize = new Size(480, 650), StartPosition = FormStartPosition.CenterScreen };
             Root.FormClosing += (s, e) => {
                 censorService.Dispose();
-                uiController.Dispose(); // ★★★ 툴팁 리소스 정리 추가 ★★★
+                uiController.Dispose();
             };
             uiController = new GuiController(Root);
             censorService = new CensorService(uiController);
             ConnectEvents();
             uiController.LogMessage("✅ 시스템 초기화 완료. 시작 버튼을 누르세요.");
 
-            // 초기 GPU 상태 업데이트 호출
-            uiController.UpdateGpuStatus(censorService.processor.CurrentExecutionProvider);
+            // ★★★ [수정] 소문자 processor를 대문자 Processor 속성으로 변경 ★★★
+            uiController.UpdateGpuStatus(censorService.Processor.CurrentExecutionProvider);
         }
 
         private void ConnectEvents()
         {
             uiController.StartClicked += censorService.Start;
             uiController.StopClicked += censorService.Stop;
-            uiController.CaptureAndSaveClicked += censorService.CaptureAndSave; // ★★★ 변경: TestCaptureClicked → CaptureAndSaveClicked
+            uiController.CaptureAndSaveClicked += censorService.CaptureAndSave;
 
             // 스티커 이벤트 연결
             uiController.StickerToggled += (val) => censorService.UpdateSetting("EnableStickers", val);

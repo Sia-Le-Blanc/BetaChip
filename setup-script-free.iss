@@ -2,7 +2,7 @@
 ; 레지스트리 기반 경로 관리로 안정성 극대화
 
 #define MyAppName "BetaChip"
-**#define MyAppVersion "2.4.2"**
+#define MyAppVersion "2.4.2"
 #define MyAppPublisher "Sia"
 #define MyAppURL "https://github.com/Sia-Le-Blanc/BetaChip"
 #define MyAppExeName "MosaicCensorSystem.exe"

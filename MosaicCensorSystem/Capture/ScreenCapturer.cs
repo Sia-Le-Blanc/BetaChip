@@ -1,7 +1,6 @@
 using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
-using System.Windows.Forms;
 using OpenCvSharp;
 
 namespace MosaicCensorSystem.Capture
@@ -9,63 +8,24 @@ namespace MosaicCensorSystem.Capture
     public class ScreenCapture : IDisposable
     {
         #region Win32 API P/Invoke
-        // DPI 관련 추가
-        [DllImport("user32.dll")]
-        private static extern int GetSystemMetrics(int nIndex);
-        
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetDC(IntPtr hWnd);
-        
-        [DllImport("gdi32.dll")]
-        private static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
-        
-        private const int SM_CXSCREEN = 0;
-        private const int SM_CYSCREEN = 1;
-        private const int SM_XVIRTUALSCREEN = 76;
-        private const int SM_YVIRTUALSCREEN = 77;
+        [DllImport("user32.dll")] private static extern int GetSystemMetrics(int nIndex);
+        [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);
+        [DllImport("gdi32.dll")] private static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
         private const int SM_CXVIRTUALSCREEN = 78;
         private const int SM_CYVIRTUALSCREEN = 79;
+        private const int SM_XVIRTUALSCREEN = 76;
+        private const int SM_YVIRTUALSCREEN = 77;
         private const int LOGPIXELSX = 88;
         private const int LOGPIXELSY = 90;
 
-        // CreateDIBSection 함수와 BITMAPINFO 구조체를 추가합니다.
         [StructLayout(LayoutKind.Sequential)]
-        public struct BITMAPINFO
-        {
-            public BITMAPINFOHEADER bmiHeader;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
-            public RGBQUAD[] bmiColors;
-        }
-
+        public struct BITMAPINFO { public BITMAPINFOHEADER bmiHeader; [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)] public RGBQUAD[] bmiColors; }
         [StructLayout(LayoutKind.Sequential)]
-        public struct BITMAPINFOHEADER
-        {
-            public uint biSize;
-            public int biWidth;
-            public int biHeight;
-            public ushort biPlanes;
-            public ushort biBitCount;
-            public uint biCompression;
-            public uint biSizeImage;
-            public int biXPelsPerMeter;
-            public int biYPelsPerMeter;
-            public uint biClrUsed;
-            public uint biClrImportant;
-        }
-
+        public struct BITMAPINFOHEADER { public uint biSize; public int biWidth; public int biHeight; public ushort biPlanes; public ushort biBitCount; public uint biCompression; public uint biSizeImage; public int biXPelsPerMeter; public int biYPelsPerMeter; public uint biClrUsed; public uint biClrImportant; }
         [StructLayout(LayoutKind.Sequential)]
-        public struct RGBQUAD
-        {
-            public byte rgbBlue;
-            public byte rgbGreen;
-            public byte rgbRed;
-            public byte rgbReserved;
-        }
-
-        [DllImport("gdi32.dll")]
-        private static extern IntPtr CreateDIBSection(IntPtr hdc, [In] ref BITMAPINFO pbmi, uint pila, out IntPtr ppvBits, IntPtr hSection, uint dwOffset);
+        public struct RGBQUAD { public byte rgbBlue; public byte rgbGreen; public byte rgbRed; public byte rgbReserved; }
         
-        // --- 기존 함수들 ---
+        [DllImport("gdi32.dll")] private static extern IntPtr CreateDIBSection(IntPtr hdc, [In] ref BITMAPINFO pbmi, uint pila, out IntPtr ppvBits, IntPtr hSection, uint dwOffset);
         [DllImport("user32.dll")] private static extern IntPtr GetDesktopWindow();
         [DllImport("user32.dll")] private static extern IntPtr GetWindowDC(IntPtr hWnd);
         [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr hDC);
@@ -87,100 +47,107 @@ namespace MosaicCensorSystem.Capture
         private IntPtr hMemoryDC;
         private IntPtr hBitmap;
         private IntPtr hOldBitmap;
-        private IntPtr pPixelData; // 픽셀 데이터 메모리 포인터
+        private IntPtr pPixelData;
         private bool disposed = false;
-
-        // ★★★ 새로 추가: 개별 모니터 캡처 지원 ★★★
-        private readonly Rectangle? specificMonitorBounds;
-
-        // DPI 스케일링 정보
-        public float DpiScaleX { get; private set; }
-        public float DpiScaleY { get; private set; }
-
-        // ★★★ 기존 생성자: 전체 가상 데스크톱 캡처 ★★★
+        
         public ScreenCapture()
         {
-            specificMonitorBounds = null;
-            
-            // 전체 가상 데스크톱 캡처
             virtualX = GetSystemMetrics(SM_XVIRTUALSCREEN);
             virtualY = GetSystemMetrics(SM_YVIRTUALSCREEN);
             width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
             height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-            Console.WriteLine($"가상 데스크톱 물리적 해상도: {width}x{height} at ({virtualX}, {virtualY})");
-            
             InitializeCapture();
         }
 
-        // ★★★ 새 생성자: 특정 모니터만 캡처 ★★★
         public ScreenCapture(Rectangle monitorBounds)
         {
-            specificMonitorBounds = monitorBounds;
-            
-            // 특정 모니터만 캡처
             virtualX = monitorBounds.X;
             virtualY = monitorBounds.Y;
             width = monitorBounds.Width;
             height = monitorBounds.Height;
-            Console.WriteLine($"개별 모니터 캡처 초기화: {width}x{height} at ({virtualX}, {virtualY})");
-            
             InitializeCapture();
         }
 
         private void InitializeCapture()
         {
-
-            // DPI 정보 획득
-            IntPtr dc = GetDC(IntPtr.Zero);
-            int dpiX = GetDeviceCaps(dc, LOGPIXELSX);
-            int dpiY = GetDeviceCaps(dc, LOGPIXELSY);
-            ReleaseDC(IntPtr.Zero, dc);
-
-            DpiScaleX = dpiX / 96.0f;
-            DpiScaleY = dpiY / 96.0f;
-
-            Console.WriteLine($"DPI 스케일: {DpiScaleX:F2}x{DpiScaleY:F2}");
-
             hDesktopWnd = GetDesktopWindow();
             hDesktopDC = GetWindowDC(hDesktopWnd);
             hMemoryDC = CreateCompatibleDC(hDesktopDC);
 
-            // CreateDIBSection을 사용하기 위한 BITMAPINFO 설정
             var bmi = new BITMAPINFO();
             bmi.bmiHeader.biSize = (uint)Marshal.SizeOf(typeof(BITMAPINFOHEADER));
             bmi.bmiHeader.biWidth = width;
-            bmi.bmiHeader.biHeight = -height; // Top-down DIB
+            bmi.bmiHeader.biHeight = -height;
             bmi.bmiHeader.biPlanes = 1;
-            bmi.bmiHeader.biBitCount = 32; // 32비트 (BGRA)
+            bmi.bmiHeader.biBitCount = 32;
             bmi.bmiHeader.biCompression = BI_RGB;
 
-            // CreateCompatibleBitmap 대신 CreateDIBSection을 사용해 pPixelData 포인터를 직접 얻습니다.
             hBitmap = CreateDIBSection(hMemoryDC, ref bmi, 0, out pPixelData, IntPtr.Zero, 0);
             hOldBitmap = SelectObject(hMemoryDC, hBitmap);
         }
+
+
 
         public Mat GetFrame()
         {
             if (disposed) return null;
             
-            // 지정된 영역 캡처 (전체 또는 특정 모니터)
             BitBlt(hMemoryDC, 0, 0, width, height, hDesktopDC, virtualX, virtualY, SRCCOPY);
-
-            // Bitmap 객체 변환 없이, 메모리 포인터(pPixelData)로 직접 Mat 객체를 생성합니다.
-            // MatType.CV_8UC4는 8비트 부호없는 4채널(BGRA) 이미지를 의미합니다.
             return new Mat(height, width, MatType.CV_8UC4, pPixelData);
         }
-
+        
         public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        // ★★★ [수정] 자원 해제 순서를 바로잡은 최종 Dispose 메서드 ★★★
+        protected virtual void Dispose(bool disposing)
         {
             if (!disposed)
             {
-                SelectObject(hMemoryDC, hOldBitmap);
-                DeleteObject(hBitmap);
-                DeleteDC(hMemoryDC);
-                ReleaseDC(hDesktopWnd, hDesktopDC);
+                if (disposing)
+                {
+                    // 관리되는 리소스 정리 (현재 없음)
+                }
+
+                // 관리되지 않는 리소스(Win32 핸들) 정리
+                // 1. 메모리 DC에서 우리가 만든 비트맵을 제거하고 원래 비트맵으로 되돌립니다.
+                if (hMemoryDC != IntPtr.Zero && hOldBitmap != IntPtr.Zero)
+                {
+                    SelectObject(hMemoryDC, hOldBitmap);
+                    hOldBitmap = IntPtr.Zero;
+                }
+
+                // 2. 이제 자유로워진 우리가 만든 비트맵을 삭제합니다.
+                if (hBitmap != IntPtr.Zero)
+                {
+                    DeleteObject(hBitmap);
+                    hBitmap = IntPtr.Zero;
+                }
+
+                // 3. 비트맵이 모두 정리된 메모리 DC를 삭제합니다.
+                if (hMemoryDC != IntPtr.Zero)
+                {
+                    DeleteDC(hMemoryDC);
+                    hMemoryDC = IntPtr.Zero;
+                }
+
+                // 4. 마지막으로 데스크탑 DC를 해제합니다.
+                if (hDesktopDC != IntPtr.Zero)
+                {
+                    ReleaseDC(hDesktopWnd, hDesktopDC);
+                    hDesktopDC = IntPtr.Zero;
+                }
+                
                 disposed = true;
             }
+        }
+
+        ~ScreenCapture()
+        {
+            Dispose(false);
         }
     }
 }

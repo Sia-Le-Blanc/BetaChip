@@ -11,6 +11,7 @@ namespace MosaicCensorSystem.Overlay
     public class FullscreenOverlay : Form, IOverlay
     {
         #region Windows API
+        // ★★★ 생략되었던 Windows API 선언부 전체 복원 ★★★
         private const int WS_EX_LAYERED = 0x00080000;
         private const int WS_EX_TRANSPARENT = 0x00000020;
         private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
@@ -28,8 +29,13 @@ namespace MosaicCensorSystem.Overlay
         private float dpiScaleX = 1.0f;
         private float dpiScaleY = 1.0f;
 
-        // ★★★ 투명키를 매젠타로 설정 (거의 사용되지 않는 색상) ★★★
         private static readonly Color TRANSPARENCY_KEY = Color.FromArgb(255, 0, 255); // 매젠타
+        
+        public FullscreenOverlay(Rectangle bounds) : this()
+        {
+            UpdateDpiScale(); 
+            SetMonitorBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        }
 
         public FullscreenOverlay()
         {
@@ -42,6 +48,40 @@ namespace MosaicCensorSystem.Overlay
             this.TransparencyKey = TRANSPARENCY_KEY;
 
             this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        }
+
+        public void UpdateFrame(Mat processedFrame)
+        {
+            if (processedFrame == null || processedFrame.Empty()) return;
+
+            using Mat transparentFrame = ConvertBlackToTransparent(processedFrame);
+            Bitmap newBitmap = BitmapConverter.ToBitmap(transparentFrame);
+
+            if (this.InvokeRequired)
+            {
+                try
+                {
+                    this.Invoke(new Action(() => UpdateBitmapAndInvalidate(newBitmap)));
+                }
+                catch (ObjectDisposedException)
+                {
+                    newBitmap.Dispose();
+                }
+            }
+            else
+            {
+                UpdateBitmapAndInvalidate(newBitmap);
+            }
+        }
+
+        private void UpdateBitmapAndInvalidate(Bitmap newBitmap)
+        {
+            lock (bitmapLock)
+            {
+                currentBitmap?.Dispose();
+                currentBitmap = newBitmap;
+            }
+            this.Invalidate();
         }
 
         protected override CreateParams CreateParams
@@ -83,29 +123,10 @@ namespace MosaicCensorSystem.Overlay
             }
         }
 
-        public void UpdateFrame(Mat processedFrame)
-        {
-            if (processedFrame == null || processedFrame.Empty()) return;
-
-            // ★★★ 투명 처리를 위한 전처리: 검은색을 매젠타로 변환 ★★★
-            Mat transparentFrame = ConvertBlackToTransparent(processedFrame);
-            Bitmap newBitmap = BitmapConverter.ToBitmap(transparentFrame);
-            transparentFrame.Dispose();
-
-            lock (bitmapLock)
-            {
-                currentBitmap?.Dispose();
-                currentBitmap = newBitmap;
-            }
-            this.Invalidate();
-        }
-
-        // ★★★ 특정 색상(3,3,3)만 투명키(매젠타)로 변환하는 메서드 ★★★
         private Mat ConvertBlackToTransparent(Mat originalFrame)
         {
             Mat result = new Mat();
             
-            // BGRA 채널로 변환 (투명도 지원)
             if (originalFrame.Channels() == 3)
             {
                 Cv2.CvtColor(originalFrame, result, ColorConversionCodes.BGR2BGRA);
@@ -115,16 +136,9 @@ namespace MosaicCensorSystem.Overlay
                 result = originalFrame.Clone();
             }
 
-            // ★★★ 정확히 (3,3,3) 색상만 투명하게 변환 ★★★
-            Mat transparencyMask = new Mat();
-            
-            // 딱 (3,3,3) 색상만 찾기 - 다른 검정색들은 보호
+            using Mat transparencyMask = new Mat();
             Cv2.InRange(result, new Scalar(3, 3, 3, 0), new Scalar(3, 3, 3, 255), transparencyMask);
-            
-            // (3,3,3) 영역만 매젠타로 변경하여 투명하게 만들기
             result.SetTo(new Scalar(255, 0, 255, 255), transparencyMask); // 매젠타 (BGRA)
-
-            transparencyMask.Dispose();
             
             return result;
         }
@@ -133,7 +147,6 @@ namespace MosaicCensorSystem.Overlay
         {
             this.StartPosition = FormStartPosition.Manual;
             
-            // DPI 스케일링 적용
             int scaledX = (int)(x / dpiScaleX);
             int scaledY = (int)(y / dpiScaleY);
             int scaledWidth = (int)(width / dpiScaleX);
@@ -149,7 +162,6 @@ namespace MosaicCensorSystem.Overlay
             base.OnPaint(e);
             lock (bitmapLock)
             {
-                // 배경을 투명키로 채우기
                 using (SolidBrush brush = new SolidBrush(this.TransparencyKey))
                 {
                     e.Graphics.FillRectangle(brush, this.ClientRectangle);
@@ -157,7 +169,6 @@ namespace MosaicCensorSystem.Overlay
 
                 if (currentBitmap != null)
                 {
-                    // DPI 스케일링을 고려한 이미지 그리기
                     Rectangle destRect = new Rectangle(0, 0, this.ClientRectangle.Width, this.ClientRectangle.Height);
                     e.Graphics.DrawImage(currentBitmap, destRect);
                 }
