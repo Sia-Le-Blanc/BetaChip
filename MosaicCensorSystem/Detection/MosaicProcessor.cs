@@ -237,14 +237,13 @@ namespace MosaicCensorSystem.Detection
             }
             else if (currentCensorType == CensorType.BlackBox)
             {
-                // ★★★ 검정 박스: 완전한 검은색 사용 ★★★
-                if (region.Channels() == 4) // BGRA 채널
+                if (region.Channels() == 4)
                 {
-                    region.SetTo(new Scalar(0, 0, 0, 255)); // 완전한 검은색 + 불투명
+                    region.SetTo(new Scalar(0, 0, 0, 255));
                 }
-                else // BGR 채널
+                else
                 {
-                    region.SetTo(new Scalar(0, 0, 0)); // 완전한 검은색
+                    region.SetTo(new Scalar(0, 0, 0));
                 }
             }
         }
@@ -286,6 +285,12 @@ namespace MosaicCensorSystem.Detection
                     c?.Dispose();
                 }
             }
+
+            // ★★★ 수정된 부분 ★★★
+            // 네이티브 리소스를 사용하는 ONNX 모델의 메모리를
+            // 확실하게 정리하도록 GC를 명시적으로 호출합니다.
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
         }
     }
     
