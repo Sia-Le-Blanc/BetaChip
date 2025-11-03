@@ -1,9 +1,9 @@
-; Inno Setup 스크립트 - BetaChip 후원자용 (v2.4.2 개정판)
+; Inno Setup 스크립트 - BetaChip 후원자용 (v2.4.4 개정판)
 ; 레지스트리 기반 경로 관리로 안정성 극대화
 
 #define MyAppName "BetaChip" ; 레지스트리 키 공유를 위해 내부 이름은 통일
 #define MyAppDisplayName "BetaChip - 후원자용" ; 사용자에게 보여지는 이름
-#define MyAppVersion "2.4.2-Patreon"
+#define MyAppVersion "2.4.4-Patreon"
 #define MyAppPublisher "Sia"
 #define MyAppURL "https://github.com/Sia-Le-Blanc/BetaChip"
 #define MyAppExeName "MosaicCensorSystem.exe"
