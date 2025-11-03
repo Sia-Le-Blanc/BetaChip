@@ -22,35 +22,78 @@ namespace MosaicCensorSystem
         private static string? GetPathFromRegistry(string valueName)
         {
             const string registryKeyPath = @"SOFTWARE\BetaChip\MosaicCensorSystem";
+            const string modelFileName = "best.onnx";
 
-            try
+            RegistryView[] viewsToProbe =
             {
-                // HKEY_LOCAL_MACHINE (HKLM)은 시스템 전체에 적용되며 설치 시 관리자 권한으로 기록되어 신뢰할 수 있습니다.
-                using (RegistryKey? key = Registry.LocalMachine.OpenSubKey(registryKeyPath))
+                RegistryView.Registry64,
+                RegistryView.Registry32,
+            };
+
+            foreach (RegistryView view in viewsToProbe)
+            {
+                try
                 {
-                    if (key?.GetValue(valueName) is string path && !string.IsNullOrEmpty(path))
+                    using RegistryKey baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+                    using RegistryKey? key = baseKey.OpenSubKey(registryKeyPath);
+
+                    if (key?.GetValue(valueName) is string rawPath && !string.IsNullOrWhiteSpace(rawPath))
                     {
-                        // 레지스트리에 기록된 경로가 실제로 존재하는지 최종 확인합니다.
-                        // File.Exists는 파일에, Directory.Exists는 폴더에 사용될 수 있습니다.
-                        if (File.Exists(path) || Directory.Exists(path))
+                        if (TryNormalizePath(rawPath, valueName, out string? normalized, modelFileName))
                         {
-                            Console.WriteLine($"✅ 레지스트리에서 유효한 경로 발견 [{valueName}]: {path}");
-                            return path;
+                            Console.WriteLine($"✅ 레지스트리({view})에서 유효한 경로 발견 [{valueName}]: {normalized}");
+                            return normalized;
                         }
-                        else
-                        {
-                             Console.WriteLine($"❌ 레지스트리 경로는 찾았으나 파일/폴더가 없음: {path}");
-                        }
+
+                        Console.WriteLine($"❌ 레지스트리({view}) 값은 존재하지만 유효한 경로가 아님: {rawPath}");
                     }
                 }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"❌ 레지스트리({view}) 접근 중 오류 발생 [{valueName}]: {ex.Message}");
+                }
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ 레지스트리 접근 중 오류 발생 [{valueName}]: {ex.Message}");
-            }
-            
-            Console.WriteLine($"❌ 레지스트리에서 '{valueName}' 경로를 찾을 수 없음");
+
+            Console.WriteLine($"❌ 32/64비트 레지스트리 어디에서도 '{valueName}' 경로를 찾을 수 없음");
             return null;
+        }
+
+        private static bool TryNormalizePath(string rawPath, string valueName, out string? normalizedPath, string modelFileName)
+        {
+            normalizedPath = null;
+
+            string candidate = rawPath.Trim();
+
+            if (candidate.Length == 0)
+            {
+                return false;
+            }
+
+            if (candidate.StartsWith('"') && candidate.EndsWith('"') && candidate.Length >= 2)
+            {
+                candidate = candidate[1..^1];
+            }
+
+            candidate = Environment.ExpandEnvironmentVariables(candidate);
+
+            if (File.Exists(candidate))
+            {
+                normalizedPath = candidate;
+                return true;
+            }
+
+            if (Directory.Exists(candidate) && valueName.Equals("ModelPath", StringComparison.OrdinalIgnoreCase))
+            {
+                string modelCandidate = Path.Combine(candidate, modelFileName);
+                if (File.Exists(modelCandidate))
+                {
+                    Console.WriteLine($"ℹ️ '{valueName}' 값이 폴더를 가리켜 best.onnx 파일로 자동 보정: {modelCandidate}");
+                    normalizedPath = modelCandidate;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         [STAThread]
