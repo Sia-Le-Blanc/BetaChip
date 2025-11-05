@@ -95,7 +95,17 @@
     <Message Text="====================================" Importance="high" />
   </Target>
 
-  <!-- 디버깅용: 스티커 파일 복사 상태 확인 (안전한 버전) -->
+  <!-- OverlayText 이미지 파일 복사 설정 -->
+  <ItemGroup>
+    <!-- OverlayText 폴더가 존재할 경우, 해당 파일을 빌드 출력에 복사 -->
+    <Content Include="Resources\OverlayText\**\*" Condition="Exists('Resources\OverlayText')">
+      <!-- 출력 폴더에 동일한 구조로 복사되도록 Link 경로를 지정합니다 -->
+      <Link>Resources\OverlayText\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- 디버깅용: 스티커 파일 복사 상태 확인 -->
   <Target Name="DebugStickerCopy" AfterTargets="ShowBuildInfo" Condition="'$(P)' == 'true'">
     <Message Text="🎯 후원자 빌드: 스티커 파일 복사 중..." Importance="high" />
     <ItemGroup>

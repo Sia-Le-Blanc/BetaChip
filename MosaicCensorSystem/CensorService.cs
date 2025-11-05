@@ -2,6 +2,7 @@
 using MosaicCensorSystem.Capture;
 using MosaicCensorSystem.Detection;
 using MosaicCensorSystem.Management;
+using MosaicCensorSystem.Overlay;  // OverlayTextManager 사용을 위해 추가
 using MosaicCensorSystem.UI;
 using OpenCvSharp;
 using System;
@@ -28,7 +29,10 @@ namespace MosaicCensorSystem
         private readonly Random random = new Random();
         private readonly IOverlayManager overlayManager;
 
-        // ★★★ [수정] MosaicApp에서 processor에 접근할 수 있도록 public getter 추가 ★★★
+        // 새롭게 추가: 오버레이 텍스트 매니저
+        private readonly OverlayTextManager overlayTextManager;
+
+        // 외부에서 MosaicProcessor에 접근할 수 있도록 public getter 제공 (기존 코드 참고)
         public MosaicProcessor Processor => processor;
         
         private CensorSettings currentSettings = new(true, true, false, 15);
@@ -46,14 +50,17 @@ namespace MosaicCensorSystem
             capturer = new ScreenCapture();
             processor = new MosaicProcessor(Program.ONNX_MODEL_PATH);
 
-#if PATREON_VERSION
+    #if PATREON_VERSION
             overlayManager = new MultiMonitorManager(capturer);
             ui.LogMessage("🖥️ 후원자 버전: 멀티 모니터 관리자 활성화!");
-#else
+    #else
             overlayManager = new SingleMonitorManager(capturer);
             ui.LogMessage("🖥️ 무료 버전: 단일 모니터 관리자 활성화");
-#endif
+    #endif
             overlayManager.Initialize(ui);
+
+            // 오버레이 텍스트 매니저 초기화
+            overlayTextManager = new OverlayTextManager();
 
             SetupScreenshotFolder();
             LoadStickers();
@@ -96,12 +103,30 @@ namespace MosaicCensorSystem
 
         private Mat ProcessFrame(Mat rawFrame)
         {
-            if (rawFrame == null || rawFrame.Empty()) return null;
+            // 프레임이 없으면 오버레이를 비활성화하고 null 반환
+            if (rawFrame == null || rawFrame.Empty())
+            {
+                overlayTextManager.Update(false);
+                return null;
+            }
 
+            // 원본 프레임 복제
             Mat processedFrame = rawFrame.Clone();
-            if (!currentSettings.EnableDetection) return processedFrame;
 
+            // 객체 감지가 비활성화되어 있으면 오버레이도 비활성화하고 원본 프레임 반환
+            if (!currentSettings.EnableDetection)
+            {
+                overlayTextManager.Update(false);
+                return processedFrame;
+            }
+
+            // 객체 감지 수행
             List<Detection.Detection> detections = processor.DetectObjects(rawFrame);
+
+            // 감지 여부를 오버레이 매니저에 전달
+            bool detectionActive = detections != null && detections.Count > 0;
+            overlayTextManager.Update(detectionActive);
+
             foreach (var detection in detections)
             {
                 if (currentSettings.EnableCensoring)
@@ -109,6 +134,7 @@ namespace MosaicCensorSystem
                     processor.ApplySingleCensorOptimized(processedFrame, detection);
                 }
 
+                // 스티커 기능
                 if (currentSettings.EnableStickers && (squareStickers.Count > 0 || wideStickers.Count > 0))
                 {
                     if (!trackedStickers.TryGetValue(detection.TrackId, out var stickerInfo) || (DateTime.Now - stickerInfo.AssignedTime).TotalSeconds > 30)
@@ -127,6 +153,10 @@ namespace MosaicCensorSystem
                     }
                 }
             }
+
+            // 감지 결과에 따라 오버레이 텍스트를 프레임에 그림
+            overlayTextManager.DrawOverlayOnFrame(processedFrame);
+
             return processedFrame;
         }
 
@@ -296,6 +326,7 @@ $Shortcut.Save()";
             capturer?.Dispose();
             processor?.Dispose();
             overlayManager?.Dispose();
+            overlayTextManager?.Dispose();
             foreach (var s in squareStickers) s.Dispose();
             foreach (var s in wideStickers) s.Dispose();
         }

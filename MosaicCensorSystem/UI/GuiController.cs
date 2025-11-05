@@ -19,6 +19,7 @@ namespace MosaicCensorSystem.UI
         public event Action<bool> CensoringToggled;
         public event Action<bool> StickerToggled;
         public event Action<CensorType> CensorTypeChanged;
+    
         public event Action<int> StrengthChanged;
         public event Action<float> ConfidenceChanged;
         public event Action StartClicked;
