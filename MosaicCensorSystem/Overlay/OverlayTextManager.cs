@@ -5,14 +5,15 @@ using OpenCvSharp;
 
 namespace MosaicCensorSystem.Overlay
 {
-    /// <summary>
-    /// 화면에 텍스트 이미지(오버레이 텍스트)를 일정 시간 간격으로 랜덤한 위치에 표시하는 관리자입니다.
-    /// 객체가 감지되었을 때만 동작하도록 설계되었습니다.
-    /// </summary>
     public class OverlayTextManager : IDisposable
     {
+        private const double MIN_INTERVAL_SECONDS = 3.0;   // ★ 10초 → 3초로 단축
+        private const double MAX_INTERVAL_SECONDS = 8.0;   // ★ 30초 → 8초로 단축
+        private const float MAX_SCREEN_COVERAGE = 0.27f;   // ★ 0.4(40%) → 0.27(27%)로 감소 (10% 줄임: 40% * 0.9 = 36% → 더 작게 조정)
+
         private readonly Random random = new Random();
         private readonly List<Mat> overlayImages = new();
+        private readonly Action<string> logCallback;
 
         private Mat? currentOverlay;
         private DateTime lastChangeTime = DateTime.MinValue;
@@ -20,154 +21,207 @@ namespace MosaicCensorSystem.Overlay
         private OpenCvSharp.Point currentPosition = new OpenCvSharp.Point(0, 0);
         private bool positionSet = false;
         private bool isActive = false;
+        private bool disposed = false;
 
-        /// <summary>
-        /// 생성자. 오버레이 텍스트 이미지를 Resources/OverlayText 폴더에서 로드합니다.
-        /// </summary>
-        public OverlayTextManager()
+        public OverlayTextManager(Action<string> logger = null)
         {
+            logCallback = logger;
             LoadOverlayImages();
         }
 
-        /// <summary>
-        /// 지정된 폴더에서 PNG 이미지를 로드합니다.
-        /// 폴더가 없거나 파일이 없으면 아무것도 로드하지 않습니다.
-        /// </summary>
         private void LoadOverlayImages()
         {
             try
             {
-                // OverlayText 폴더 경로를 지정합니다. 프로젝트 빌드 시 Resources/OverlayText 폴더가 복사되어야 합니다.
                 string overlayPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "OverlayText");
+                
+                logCallback?.Invoke($"📂 OverlayText 경로 확인 중: {overlayPath}");
+
                 if (!Directory.Exists(overlayPath))
                 {
+                    logCallback?.Invoke($"⚠️ OverlayText 폴더 없음: {overlayPath}");
                     return;
                 }
 
                 var files = Directory.GetFiles(overlayPath, "*.png");
+                
+                if (files.Length == 0)
+                {
+                    logCallback?.Invoke($"⚠️ OverlayText 폴더에 PNG 파일이 없습니다: {overlayPath}");
+                    return;
+                }
+
+                logCallback?.Invoke($"🔍 발견된 PNG 파일 수: {files.Length}");
+
+                int loadedCount = 0;
                 foreach (var file in files)
                 {
                     using var img = Cv2.ImRead(file, ImreadModes.Unchanged);
                     if (!img.Empty())
                     {
                         overlayImages.Add(img.Clone());
+                        loadedCount++;
+                        logCallback?.Invoke($"✅ 이미지 로드 성공: {Path.GetFileName(file)} (원본: {img.Width}x{img.Height})");
+                    }
+                    else
+                    {
+                        logCallback?.Invoke($"⚠️ 이미지 로드 실패: {file}");
                     }
                 }
+
+                if (loadedCount > 0)
+                {
+                    logCallback?.Invoke($"✅ OverlayText 이미지 {loadedCount}개 로드 완료");
+                }
+                else
+                {
+                    logCallback?.Invoke($"❌ OverlayText 이미지 로드 실패 (0개)");
+                }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // 폴더 접근 시 예외가 발생해도 무시합니다. UI 로그는 상위에서 처리할 수 있습니다.
+                logCallback?.Invoke($"❌ OverlayText 로드 중 오류: {ex.Message}");
             }
         }
 
-        /// <summary>
-        /// 현재 탐지 상태를 업데이트하고, 필요하다면 새 오버레이를 선택합니다.
-        /// </summary>
-        /// <param name="detectionActive">현재 프레임에서 객체가 감지되었는지 여부</param>
         public void Update(bool detectionActive)
         {
-            // 탐지 상태에 따라 활성 여부 설정
+            if (disposed) return;
+
             isActive = detectionActive;
 
             if (!isActive || overlayImages.Count == 0)
             {
-                // 감지되지 않거나 이미지가 없으면 오버레이를 비웁니다.
                 ClearCurrentOverlay();
                 return;
             }
 
-            // 현재 오버레이가 없거나 설정된 시간 간격이 지났으면 새 오버레이로 교체합니다.
             if (currentOverlay == null || (DateTime.Now - lastChangeTime).TotalSeconds >= currentInterval)
             {
                 ChangeOverlay();
             }
         }
 
-        /// <summary>
-        /// 오버레이를 초기화하거나 삭제합니다.
-        /// </summary>
         private void ClearCurrentOverlay()
         {
-            if (currentOverlay != null && !currentOverlay.IsDisposed)
+            if (currentOverlay != null)
             {
-                currentOverlay.Dispose();
+                if (!currentOverlay.IsDisposed)
+                {
+                    currentOverlay.Dispose();
+                }
+                currentOverlay = null;
             }
-            currentOverlay = null;
             positionSet = false;
         }
 
-        /// <summary>
-        /// 랜덤한 이미지와 간격을 선택하고 위치 재설정을 준비합니다.
-        /// </summary>
         private void ChangeOverlay()
         {
-            // 이전 오버레이를 해제
             ClearCurrentOverlay();
 
-            // 새 이미지 선택
             int index = random.Next(overlayImages.Count);
             currentOverlay = overlayImages[index].Clone();
 
-            // 10초에서 30초 사이의 랜덤한 간격 설정 (포함 범위)
-            currentInterval = 10.0 + random.NextDouble() * 20.0;
+            currentInterval = MIN_INTERVAL_SECONDS + random.NextDouble() * (MAX_INTERVAL_SECONDS - MIN_INTERVAL_SECONDS);
             lastChangeTime = DateTime.Now;
+            positionSet = false;  // ★ 새 오버레이마다 위치를 새로 선택하도록 리셋
 
-            // 새 이미지의 위치는 아직 정하지 않음
-            positionSet = false;
+            logCallback?.Invoke($"🎨 새 오버레이 선택됨 (다음 변경: {currentInterval:F1}초 후)");
         }
 
-        /// <summary>
-        /// 활성 상태인 경우 오버레이 이미지를 주어진 프레임에 그립니다.
-        /// </summary>
-        /// <param name="frame">그릴 대상 프레임(Mat)</param>
         public void DrawOverlayOnFrame(Mat frame)
         {
-            if (!isActive || currentOverlay == null)
+            if (disposed || !isActive || currentOverlay == null || currentOverlay.IsDisposed)
             {
                 return;
             }
+
             if (frame == null || frame.Empty())
             {
                 return;
             }
 
-            int overlayWidth = currentOverlay.Width;
-            int overlayHeight = currentOverlay.Height;
-            if (overlayWidth <= 0 || overlayHeight <= 0)
+            Mat resizedOverlay = ResizeOverlayToFit(currentOverlay, frame.Width, frame.Height);
+            
+            if (resizedOverlay == null || resizedOverlay.Empty())
             {
-                return;
-            }
-            if (overlayWidth > frame.Width || overlayHeight > frame.Height)
-            {
+                logCallback?.Invoke("⚠️ 오버레이 리사이징 실패");
                 return;
             }
 
-            // 오버레이 위치를 아직 설정하지 않았다면 랜덤 위치를 계산합니다.
+            int overlayWidth = resizedOverlay.Width;
+            int overlayHeight = resizedOverlay.Height;
+
+            // ★ positionSet이 false일 때마다 새 위치 계산 (더 자주 위치 변경)
             if (!positionSet)
             {
                 int maxX = Math.Max(0, frame.Width - overlayWidth);
                 int maxY = Math.Max(0, frame.Height - overlayHeight);
+                
+                // ★ 화면 전체에서 랜덤하게 위치 선택
                 int x = maxX == 0 ? 0 : random.Next(0, maxX + 1);
                 int y = maxY == 0 ? 0 : random.Next(0, maxY + 1);
+                
                 currentPosition = new OpenCvSharp.Point(x, y);
                 positionSet = true;
+                logCallback?.Invoke($"📍 오버레이 표시: 크기({overlayWidth}x{overlayHeight}), 위치({x}, {y})");
             }
 
-            BlendMatOnFrame(frame, currentOverlay, currentPosition.X, currentPosition.Y);
+            BlendMatOnFrame(frame, resizedOverlay, currentPosition.X, currentPosition.Y);
+            
+            resizedOverlay.Dispose();
         }
 
         /// <summary>
-        /// 지정된 위치에 오버레이 이미지를 프레임에 블렌딩합니다. 알파 채널을 존중합니다.
+        /// 오버레이 이미지를 화면 크기에 맞게 리사이징합니다.
+        /// 화면의 일정 비율(MAX_SCREEN_COVERAGE)을 넘지 않도록 조정합니다.
         /// </summary>
-        /// <param name="frame">기본 프레임</param>
-        /// <param name="overlay">오버레이 이미지</param>
-        /// <param name="x">왼쪽 상단 x 좌표</param>
-        /// <param name="y">왼쪽 상단 y 좌표</param>
+        private Mat ResizeOverlayToFit(Mat original, int frameWidth, int frameHeight)
+        {
+            if (original == null || original.Empty()) return null;
+
+            int origWidth = original.Width;
+            int origHeight = original.Height;
+
+            // 오버레이가 화면보다 작으면 그대로 사용
+            if (origWidth <= frameWidth * MAX_SCREEN_COVERAGE && 
+                origHeight <= frameHeight * MAX_SCREEN_COVERAGE)
+            {
+                return original.Clone();
+            }
+
+            // 화면의 27%를 최대 크기로 설정
+            int maxWidth = (int)(frameWidth * MAX_SCREEN_COVERAGE);
+            int maxHeight = (int)(frameHeight * MAX_SCREEN_COVERAGE);
+
+            // 비율을 유지하면서 크기 조정
+            float scaleWidth = (float)maxWidth / origWidth;
+            float scaleHeight = (float)maxHeight / origHeight;
+            float scale = Math.Min(scaleWidth, scaleHeight);
+
+            int newWidth = (int)(origWidth * scale);
+            int newHeight = (int)(origHeight * scale);
+
+            // 최소 크기 보장 (너무 작아지지 않도록)
+            newWidth = Math.Max(150, newWidth);
+            newHeight = Math.Max(80, newHeight);
+
+            // 리사이징
+            Mat resized = new Mat();
+            Cv2.Resize(original, resized, new OpenCvSharp.Size(newWidth, newHeight), interpolation: InterpolationFlags.Area);
+
+            logCallback?.Invoke($"🔧 오버레이 리사이징: {origWidth}x{origHeight} → {newWidth}x{newHeight}");
+
+            return resized;
+        }
+
         private void BlendMatOnFrame(Mat frame, Mat overlay, int x, int y)
         {
+            if (disposed || overlay == null || overlay.IsDisposed || frame.IsDisposed) return;
+
             int w = overlay.Width;
             int h = overlay.Height;
-            // 프레임 영역 지정
+
             if (w <= 0 || h <= 0) return;
             if (x < 0 || y < 0 || x + w > frame.Width || y + h > frame.Height) return;
 
@@ -175,7 +229,6 @@ namespace MosaicCensorSystem.Overlay
 
             if (overlay.Channels() == 4)
             {
-                // 알파 채널이 있는 경우
                 Mat[] channels = Cv2.Split(overlay);
                 try
                 {
@@ -195,7 +248,7 @@ namespace MosaicCensorSystem.Overlay
                 {
                     foreach (var c in channels)
                     {
-                        c.Dispose();
+                        c?.Dispose();
                     }
                 }
             }
@@ -211,19 +264,23 @@ namespace MosaicCensorSystem.Overlay
             }
         }
 
-        /// <summary>
-        /// 리소스를 정리합니다.
-        /// </summary>
         public void Dispose()
         {
+            if (disposed) return;
+
             ClearCurrentOverlay();
+
             foreach (var img in overlayImages)
             {
-                if (!img.IsDisposed)
+                if (img != null && !img.IsDisposed)
                 {
                     img.Dispose();
                 }
             }
+            overlayImages.Clear();
+
+            disposed = true;
+            GC.SuppressFinalize(this);
         }
     }
 }

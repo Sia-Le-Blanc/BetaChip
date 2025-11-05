@@ -2,7 +2,7 @@
 using MosaicCensorSystem.Capture;
 using MosaicCensorSystem.Detection;
 using MosaicCensorSystem.Management;
-using MosaicCensorSystem.Overlay;  // OverlayTextManager 사용을 위해 추가
+using MosaicCensorSystem.Overlay;
 using MosaicCensorSystem.UI;
 using OpenCvSharp;
 using System;
@@ -29,13 +29,14 @@ namespace MosaicCensorSystem
         private readonly Random random = new Random();
         private readonly IOverlayManager overlayManager;
 
-        // 새롭게 추가: 오버레이 텍스트 매니저
+#if PATREON_PLUS_VERSION
         private readonly OverlayTextManager overlayTextManager;
+#endif
 
-        // 외부에서 MosaicProcessor에 접근할 수 있도록 public getter 제공 (기존 코드 참고)
         public MosaicProcessor Processor => processor;
         
-        private CensorSettings currentSettings = new(true, true, false, 15);
+        // ★ EnableCaptions 추가
+        private CensorSettings currentSettings = new(true, true, false, true, 15);
 
         private readonly List<Mat> squareStickers = new();
         private readonly List<Mat> wideStickers = new();
@@ -44,23 +45,28 @@ namespace MosaicCensorSystem
         private static readonly string SCREENSHOTS_FOLDER = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "BetaChip Screenshots");
         private static readonly string DESKTOP_SHORTCUT = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "BetaChip 스크린샷.lnk");
 
+        private bool disposed = false;
+
         public CensorService(GuiController uiController)
         {
             ui = uiController;
             capturer = new ScreenCapture();
             processor = new MosaicProcessor(Program.ONNX_MODEL_PATH);
 
-    #if PATREON_VERSION
+#if PATREON_VERSION
             overlayManager = new MultiMonitorManager(capturer);
             ui.LogMessage("🖥️ 후원자 버전: 멀티 모니터 관리자 활성화!");
-    #else
+#else
             overlayManager = new SingleMonitorManager(capturer);
             ui.LogMessage("🖥️ 무료 버전: 단일 모니터 관리자 활성화");
-    #endif
+#endif
             overlayManager.Initialize(ui);
 
-            // 오버레이 텍스트 매니저 초기화
-            overlayTextManager = new OverlayTextManager();
+#if PATREON_PLUS_VERSION
+            // ★ 후원자 버전 2에만 캡션 기능 추가
+            overlayTextManager = new OverlayTextManager((msg) => ui.LogMessage(msg));
+            ui.LogMessage("✨ 후원자 플러스 버전: 캡션 기능 활성화!");
+#endif
 
             SetupScreenshotFolder();
             LoadStickers();
@@ -103,29 +109,38 @@ namespace MosaicCensorSystem
 
         private Mat ProcessFrame(Mat rawFrame)
         {
-            // 프레임이 없으면 오버레이를 비활성화하고 null 반환
             if (rawFrame == null || rawFrame.Empty())
             {
-                overlayTextManager.Update(false);
+#if PATREON_PLUS_VERSION
+                overlayTextManager?.Update(false);
+#endif
                 return null;
             }
 
-            // 원본 프레임 복제
             Mat processedFrame = rawFrame.Clone();
 
-            // 객체 감지가 비활성화되어 있으면 오버레이도 비활성화하고 원본 프레임 반환
             if (!currentSettings.EnableDetection)
             {
-                overlayTextManager.Update(false);
+#if PATREON_PLUS_VERSION
+                overlayTextManager?.Update(false);
+#endif
                 return processedFrame;
             }
 
-            // 객체 감지 수행
             List<Detection.Detection> detections = processor.DetectObjects(rawFrame);
-
-            // 감지 여부를 오버레이 매니저에 전달
             bool detectionActive = detections != null && detections.Count > 0;
-            overlayTextManager.Update(detectionActive);
+            
+#if PATREON_PLUS_VERSION
+            // ★ 캡션 활성화 여부 확인
+            if (currentSettings.EnableCaptions)
+            {
+                overlayTextManager?.Update(detectionActive);
+            }
+            else
+            {
+                overlayTextManager?.Update(false);
+            }
+#endif
 
             foreach (var detection in detections)
             {
@@ -134,7 +149,6 @@ namespace MosaicCensorSystem
                     processor.ApplySingleCensorOptimized(processedFrame, detection);
                 }
 
-                // 스티커 기능
                 if (currentSettings.EnableStickers && (squareStickers.Count > 0 || wideStickers.Count > 0))
                 {
                     if (!trackedStickers.TryGetValue(detection.TrackId, out var stickerInfo) || (DateTime.Now - stickerInfo.AssignedTime).TotalSeconds > 30)
@@ -154,8 +168,13 @@ namespace MosaicCensorSystem
                 }
             }
 
-            // 감지 결과에 따라 오버레이 텍스트를 프레임에 그림
-            overlayTextManager.DrawOverlayOnFrame(processedFrame);
+#if PATREON_PLUS_VERSION
+            // ★ 캡션을 프레임에 그림 (활성화되어 있고 감지가 있을 때만)
+            if (detectionActive && currentSettings.EnableCaptions)
+            {
+                overlayTextManager?.DrawOverlayOnFrame(processedFrame);
+            }
+#endif
 
             return processedFrame;
         }
@@ -195,18 +214,40 @@ namespace MosaicCensorSystem
             bool settingsChanged = false;
             switch (key)
             {
-                case nameof(CensorSettings.TargetFPS): currentSettings = currentSettings with { TargetFPS = (int)value }; settingsChanged = true; break;
-                case nameof(CensorSettings.EnableDetection): currentSettings = currentSettings with { EnableDetection = (bool)value }; settingsChanged = true; break;
-                case nameof(CensorSettings.EnableCensoring): currentSettings = currentSettings with { EnableCensoring = (bool)value }; settingsChanged = true; break;
+                case nameof(CensorSettings.TargetFPS): 
+                    currentSettings = currentSettings with { TargetFPS = (int)value }; 
+                    settingsChanged = true; 
+                    break;
+                case nameof(CensorSettings.EnableDetection): 
+                    currentSettings = currentSettings with { EnableDetection = (bool)value }; 
+                    settingsChanged = true; 
+                    break;
+                case nameof(CensorSettings.EnableCensoring): 
+                    currentSettings = currentSettings with { EnableCensoring = (bool)value }; 
+                    settingsChanged = true; 
+                    break;
                 case nameof(CensorSettings.EnableStickers):
                     currentSettings = currentSettings with { EnableStickers = (bool)value };
                     settingsChanged = true;
                     ui.LogMessage($"🎯 스티커 기능 {(currentSettings.EnableStickers ? "활성화" : "비활성화")}");
                     break;
-                case "CensorType": processor.SetCensorType((CensorType)value); break;
-                case "Strength": processor.SetStrength((int)value); break;
-                case "Confidence": processor.ConfThreshold = (float)value; break;
-                case "Targets": processor.SetTargets((List<string>)value); break;
+                case nameof(CensorSettings.EnableCaptions): // ★ 캡션 설정 추가
+                    currentSettings = currentSettings with { EnableCaptions = (bool)value };
+                    settingsChanged = true;
+                    ui.LogMessage($"💬 캡션 기능 {(currentSettings.EnableCaptions ? "활성화" : "비활성화")}");
+                    break;
+                case "CensorType": 
+                    processor.SetCensorType((CensorType)value); 
+                    break;
+                case "Strength": 
+                    processor.SetStrength((int)value); 
+                    break;
+                case "Confidence": 
+                    processor.ConfThreshold = (float)value; 
+                    break;
+                case "Targets": 
+                    processor.SetTargets((List<string>)value); 
+                    break;
             }
 
             if (settingsChanged)
@@ -253,7 +294,7 @@ namespace MosaicCensorSystem
                     {
                         foreach (var c in channels)
                         {
-                            c.Dispose();
+                            c?.Dispose();
                         }
                     }
                 }
@@ -277,7 +318,11 @@ namespace MosaicCensorSystem
         private void LoadStickers()
         {
             string stickerPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Stickers");
-            if (!Directory.Exists(stickerPath)) { ui.LogMessage($"⚠️ 스티커 폴더 없음: {stickerPath}"); return; }
+            if (!Directory.Exists(stickerPath)) 
+            { 
+                ui.LogMessage($"⚠️ 스티커 폴더 없음: {stickerPath}"); 
+                return; 
+            }
             
             var files = Directory.GetFiles(stickerPath, "*.png");
             foreach (var file in files)
@@ -296,15 +341,20 @@ namespace MosaicCensorSystem
         {
             try
             {
-                if (!Directory.Exists(SCREENSHOTS_FOLDER)) Directory.CreateDirectory(SCREENSHOTS_FOLDER);
-                if (!File.Exists(DESKTOP_SHORTCUT)) TryCreateWindowsShortcut();
+                if (!Directory.Exists(SCREENSHOTS_FOLDER)) 
+                    Directory.CreateDirectory(SCREENSHOTS_FOLDER);
+                if (!File.Exists(DESKTOP_SHORTCUT)) 
+                    TryCreateWindowsShortcut();
             }
-            catch (Exception ex) { ui.LogMessage($"⚠️ 스크린샷 폴더 설정 실패: {ex.Message}"); }
+            catch (Exception ex) 
+            { 
+                ui.LogMessage($"⚠️ 스크린샷 폴더 설정 실패: {ex.Message}"); 
+            }
         }
 
         private void TryCreateWindowsShortcut()
         {
-             try
+            try
             {
                 string psScript = $@"
 $WshShell = New-Object -comObject WScript.Shell
@@ -312,23 +362,48 @@ $Shortcut = $WshShell.CreateShortcut('{DESKTOP_SHORTCUT}')
 $Shortcut.TargetPath = '{SCREENSHOTS_FOLDER}'
 $Shortcut.Description = 'BetaChip 검열된 스크린샷 모음'
 $Shortcut.Save()";
-                var psi = new ProcessStartInfo { FileName = "powershell.exe", Arguments = $"-NoProfile -ExecutionPolicy Bypass -Command \"{psScript}\"", UseShellExecute = false, CreateNoWindow = true };
+                var psi = new ProcessStartInfo 
+                { 
+                    FileName = "powershell.exe", 
+                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -Command \"{psScript}\"", 
+                    UseShellExecute = false, 
+                    CreateNoWindow = true 
+                };
                 Process.Start(psi)?.WaitForExit(5000);
             }
-            catch (Exception ex) { ui.LogMessage($"⚠️ PowerShell 바로가기 생성 실패: {ex.Message}"); }
+            catch (Exception ex) 
+            { 
+                ui.LogMessage($"⚠️ PowerShell 바로가기 생성 실패: {ex.Message}"); 
+            }
         }
 
         #endregion
 
         public void Dispose()
         {
+            if (disposed) return;
+
             Stop();
+            
             capturer?.Dispose();
             processor?.Dispose();
             overlayManager?.Dispose();
+
+#if PATREON_PLUS_VERSION
             overlayTextManager?.Dispose();
-            foreach (var s in squareStickers) s.Dispose();
-            foreach (var s in wideStickers) s.Dispose();
+#endif
+            
+            foreach (var s in squareStickers) 
+                s?.Dispose();
+            foreach (var s in wideStickers) 
+                s?.Dispose();
+            
+            squareStickers.Clear();
+            wideStickers.Clear();
+            trackedStickers.Clear();
+
+            disposed = true;
+            GC.SuppressFinalize(this);
         }
     }
 }

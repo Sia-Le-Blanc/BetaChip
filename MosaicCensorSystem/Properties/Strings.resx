@@ -116,7 +116,7 @@
   
   <!-- 애플리케이션 제목 -->
   <data name="AppTitle" xml:space="preserve">
-    <value>모자이크 검열 시스템 (스티커 지원)</value>
+    <value>모자이크 검열 시스템</value>
   </data>
   
   <!-- 그룹 제목들 -->
@@ -140,7 +140,6 @@
   <data name="ButtonStop" xml:space="preserve">
     <value>중지</value>
   </data>
-  <!-- ★★★ 변경: ButtonTest → ButtonCaptureAndSave ★★★ -->
   <data name="ButtonCaptureAndSave" xml:space="preserve">
     <value>캡처 저장</value>
   </data>
@@ -154,6 +153,12 @@
   </data>
   <data name="LabelEffect" xml:space="preserve">
     <value>검열 효과 활성화</value>
+  </data>
+  <data name="LabelStickers" xml:space="preserve">
+    <value>스티커 활성화</value>
+  </data>
+  <data name="LabelCaptions" xml:space="preserve">
+    <value>캡션 활성화</value>
   </data>
   <data name="LabelCensorTypeMosaic" xml:space="preserve">
     <value>모자이크</value>
@@ -173,11 +178,8 @@
   <data name="LabelExecutionMode" xml:space="preserve">
     <value>실행 모드:</value>
   </data>
-  <data name="LabelStickers" xml:space="preserve">
-    <value>스티커 활성화</value>
-  </data>
   
-  <!-- ★★★ 툴팁 텍스트들 ★★★ -->
+  <!-- 툴팁 텍스트들 -->
   <!-- 버튼 툴팁 -->
   <data name="TooltipStart" xml:space="preserve">
     <value>실시간 객체 감지 및 검열을 시작합니다. AI 모델을 사용하여 화면의 민감한 영역을 자동으로 검열처리합니다.</value>
@@ -185,7 +187,6 @@
   <data name="TooltipStop" xml:space="preserve">
     <value>실행 중인 검열 시스템을 중지합니다. 모든 오버레이 창이 사라집니다.</value>
   </data>
-  <!-- ★★★ 변경: TooltipTest → TooltipCaptureAndSave ★★★ -->
   <data name="TooltipCaptureAndSave" xml:space="preserve">
     <value>현재 검열된 화면을 이미지 파일로 저장합니다. 시스템이 실행 중일 때만 사용 가능하며, AI 검출 및 검열 효과가 적용된 스크린샷을 생성합니다.</value>
   </data>
@@ -210,6 +211,9 @@
   </data>
   <data name="TooltipStickers" xml:space="preserve">
     <value>검열된 영역 위에 재미있는 스티커를 추가로 표시합니다. (후원자 전용 기능)</value>
+  </data>
+  <data name="TooltipCaptions" xml:space="preserve">
+    <value>감지된 영역이 있을 때 화면에 재미있는 캡션을 표시합니다. 3~8초마다 다른 위치에 나타납니다. (후원자 플러스 전용 기능)</value>
   </data>
   
   <!-- 라디오 버튼 툴팁 -->
@@ -311,7 +315,7 @@
     <value>여성의 전체적인 모습을 감지하고 검열합니다.</value>
   </data>
   
-  <!-- GPU 상태 번역 (더 명확하게) -->
+  <!-- GPU 상태 번역 -->
   <data name="GPU_CUDA" xml:space="preserve">
     <value>CUDA (NVIDIA GPU 가속)</value>
   </data>

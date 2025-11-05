@@ -1,4 +1,3 @@
-// IOverlayManager.cs
 using MosaicCensorSystem.UI;
 using OpenCvSharp;
 using System;
@@ -34,6 +33,13 @@ namespace MosaicCensorSystem.Management
 
     /// <summary>
     /// 실시간 설정을 전달하기 위한 데이터 구조
+    /// ★ EnableCaptions 추가
     /// </summary>
-    public record CensorSettings(bool EnableDetection, bool EnableCensoring, bool EnableStickers, int TargetFPS);
+    public record CensorSettings(
+        bool EnableDetection, 
+        bool EnableCensoring, 
+        bool EnableStickers, 
+        bool EnableCaptions,  // ★ 캡션 활성화 플래그 추가
+        int TargetFPS
+    );
 }

@@ -14,14 +14,17 @@ namespace MosaicCensorSystem
 
         public MosaicApp()
         {
-            Root = new Form { Text = "Mosaic Censor System (Sticker-Ready)", Size = new Size(500, 800), MinimumSize = new Size(480, 650), StartPosition = FormStartPosition.CenterScreen };
+            Root = new Form 
+            { 
+                Text = "Mosaic Censor System", 
+                Size = new Size(500, 850),  // ★ 높이 증가 (캡션 체크박스 추가로)
+                MinimumSize = new Size(480, 700), 
+                StartPosition = FormStartPosition.CenterScreen 
+            };
             
-            // ★★★ 수정된 부분 ★★★
-            Root.FormClosing += (s, e) => {
-                // 리소스를 해제하기 전에, 모든 백그라운드 동작을 명시적으로 중지시킵니다.
-                // 이렇게 하면 스레드가 안전하게 종료된 후 리소스 해제가 진행됩니다.
+            Root.FormClosing += (s, e) => 
+            {
                 censorService.Stop(); 
-                
                 censorService.Dispose();
                 uiController.Dispose();
             };
@@ -38,7 +41,16 @@ namespace MosaicCensorSystem
             uiController.StartClicked += censorService.Start;
             uiController.StopClicked += censorService.Stop;
             uiController.CaptureAndSaveClicked += censorService.CaptureAndSave;
+            
+#if PATREON_VERSION
             uiController.StickerToggled += (val) => censorService.UpdateSetting("EnableStickers", val);
+#endif
+
+#if PATREON_PLUS_VERSION
+            // ★ 캡션 토글 이벤트 연결
+            uiController.CaptionToggled += (val) => censorService.UpdateSetting("EnableCaptions", val);
+#endif
+            
             uiController.FpsChanged += (fps) => censorService.UpdateSetting("TargetFPS", fps);
             uiController.DetectionToggled += (val) => censorService.UpdateSetting("EnableDetection", val);
             uiController.CensoringToggled += (val) => censorService.UpdateSetting("EnableCensoring", val);
