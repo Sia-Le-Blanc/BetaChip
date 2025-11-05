@@ -199,16 +199,39 @@ namespace MosaicCensorSystem
 
                 using var resized = new Mat();
                 Cv2.Resize(sticker, resized, new OpenCvSharp.Size(w, h), interpolation: InterpolationFlags.Area);
-                
+
                 using var frameRoi = new Mat(frame, new Rect(x, y, w, h));
+
                 if (resized.Channels() == 4)
                 {
                     Mat[] channels = Cv2.Split(resized);
-                    using var stickerBgr = new Mat();
-                    Cv2.Merge(new[] { channels[0], channels[1], channels[2] }, stickerBgr);
-                    using var alpha = channels[3];
-                    stickerBgr.CopyTo(frameRoi, alpha);
-                    foreach (var c in channels) c.Dispose();
+                    try
+                    {
+                        var alpha = channels[3];
+                        if (frameRoi.Channels() == 4)
+                        {
+                            resized.CopyTo(frameRoi, alpha);
+                        }
+                        else
+                        {
+                            using var stickerBgr = new Mat();
+                            Cv2.Merge(new[] { channels[0], channels[1], channels[2] }, stickerBgr);
+                            stickerBgr.CopyTo(frameRoi, alpha);
+                        }
+                    }
+                    finally
+                    {
+                        foreach (var c in channels)
+                        {
+                            c.Dispose();
+                        }
+                    }
+                }
+                else if (frameRoi.Channels() == 4)
+                {
+                    using var stickerBgra = new Mat();
+                    Cv2.CvtColor(resized, stickerBgra, ColorConversionCodes.BGR2BGRA);
+                    stickerBgra.CopyTo(frameRoi);
                 }
                 else
                 {
