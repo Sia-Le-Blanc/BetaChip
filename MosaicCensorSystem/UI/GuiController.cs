@@ -8,9 +8,15 @@ using System.Resources;
 using System.Threading;
 using System.Windows.Forms;
 using MosaicCensorSystem.Detection;
+using MosaicCensorSystem.Utils;
 
 namespace MosaicCensorSystem.UI
 {
+    /// <summary>
+    /// GUI controller with an added toggle to enable or disable DPI compatibility
+    /// mode. When the checkbox is changed, the preference is stored via
+    /// UserSettings.SetCompatibilityModeEnabled and an event is raised.
+    /// </summary>
     public class GuiController : IDisposable
     {
         // --- Events ---
@@ -26,6 +32,9 @@ namespace MosaicCensorSystem.UI
         public event Action StopClicked;
         public event Action CaptureAndSaveClicked;
         public event Action<List<string>> TargetsChanged;
+
+        // 새 DPI 호환성 토글 이벤트
+        public event Action<bool> DpiCompatToggled;
 
         private readonly Form rootForm;
         private Label titleLabel;
@@ -50,6 +59,9 @@ namespace MosaicCensorSystem.UI
         private CheckBox enableCaptionsCheckBox; // ★ 캡션 체크박스 추가
 #endif
 
+        // DPI 호환성 토글 체크박스
+        private CheckBox enableDpiCompatCheckBox;
+
         private ResourceManager resourceManager;
         private string currentGpuStatus = "CPU";
         private bool disposed = false;
@@ -58,14 +70,14 @@ namespace MosaicCensorSystem.UI
         {
             rootForm = mainForm ?? throw new ArgumentNullException(nameof(mainForm));
             resourceManager = new ResourceManager("MosaicCensorSystem.Properties.Strings", typeof(GuiController).Assembly);
-            
+
             toolTip = new ToolTip
             {
                 AutoPopDelay = 8000,
                 InitialDelay = 500,
                 ReshowDelay = 200
             };
-            
+
             CreateGui();
             UpdateUIText();
         }
@@ -73,8 +85,8 @@ namespace MosaicCensorSystem.UI
         private void CreateGui()
         {
             rootForm.SuspendLayout();
-            
-            titleLabel = new Label 
+
+            titleLabel = new Label
             {
                 Font = new Font("Arial", 12, FontStyle.Bold),
                 BackColor = Color.LightSkyBlue,
@@ -83,8 +95,8 @@ namespace MosaicCensorSystem.UI
                 Height = 40,
                 Dock = DockStyle.Top
             };
-            
-            languageComboBox = new ComboBox 
+
+            languageComboBox = new ComboBox
             {
                 Location = new Point(350, 5),
                 DropDownStyle = ComboBoxStyle.DropDownList,
@@ -99,16 +111,16 @@ namespace MosaicCensorSystem.UI
             var scrollableContainer = new ScrollablePanel { Dock = DockStyle.Fill };
             rootForm.Controls.Add(scrollableContainer);
             rootForm.Controls.Add(titleLabel);
-            
+
             CreateContent(scrollableContainer.ScrollableFrame);
-            
+
             rootForm.ResumeLayout(false);
         }
 
         private void CreateContent(Panel parent)
         {
             int y = 10;
-            statusLabel = new Label 
+            statusLabel = new Label
             {
                 Font = new Font("Arial", 12, FontStyle.Bold),
                 ForeColor = Color.Red,
@@ -117,8 +129,8 @@ namespace MosaicCensorSystem.UI
             };
             parent.Controls.Add(statusLabel);
             y += 40;
-            
-            gpuStatusLabel = new Label 
+
+            gpuStatusLabel = new Label
             {
                 Font = new Font("Arial", 10),
                 Location = new Point(10, y),
@@ -128,7 +140,7 @@ namespace MosaicCensorSystem.UI
             y += 30;
 
             controlGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 80) };
-            startButton = new Button 
+            startButton = new Button
             {
                 BackColor = Color.DarkGreen,
                 ForeColor = Color.White,
@@ -136,7 +148,7 @@ namespace MosaicCensorSystem.UI
                 Size = new Size(120, 40),
                 Location = new Point(20, 25)
             };
-            stopButton = new Button 
+            stopButton = new Button
             {
                 BackColor = Color.DarkRed,
                 ForeColor = Color.White,
@@ -145,7 +157,7 @@ namespace MosaicCensorSystem.UI
                 Location = new Point(160, 25),
                 Enabled = false
             };
-            captureButton = new Button 
+            captureButton = new Button
             {
                 BackColor = Color.DarkOrange,
                 ForeColor = Color.White,
@@ -153,22 +165,22 @@ namespace MosaicCensorSystem.UI
                 Size = new Size(120, 40),
                 Location = new Point(300, 25)
             };
-            
+
             startButton.Click += (s, e) => StartClicked?.Invoke();
             stopButton.Click += (s, e) => StopClicked?.Invoke();
             captureButton.Click += (s, e) => CaptureAndSaveClicked?.Invoke();
-            
+
             controlGroup.Controls.AddRange(new Control[] { startButton, stopButton, captureButton });
             parent.Controls.Add(controlGroup);
             y += 90;
 
-            settingsGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 410) }; // ★ 높이 증가
+            settingsGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 440) };
             CreateSettingsContent(settingsGroup);
             parent.Controls.Add(settingsGroup);
-            y += 420; // ★ 간격 조정
+            y += 450;
 
             logGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 120) };
-            logTextBox = new TextBox 
+            logTextBox = new TextBox
             {
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
@@ -180,22 +192,22 @@ namespace MosaicCensorSystem.UI
             logGroup.Controls.Add(logTextBox);
             parent.Controls.Add(logGroup);
         }
-        
+
         private void CreateSettingsContent(GroupBox settingsGroup)
         {
             int y = 25;
-            
+
             var fpsValueLabel = new Label { Text = "15", Location = new Point(390, y), AutoSize = true };
-            fpsSlider = new TrackBar 
+            fpsSlider = new TrackBar
             {
-                Minimum = 5, 
-                Maximum = 240, 
-                Value = 15, 
+                Minimum = 5,
+                Maximum = 240,
+                Value = 15,
                 TickFrequency = 5,
-                Location = new Point(100, y - 5), 
+                Location = new Point(100, y - 5),
                 Size = new Size(280, 45)
             };
-            fpsSlider.ValueChanged += (s, e) => 
+            fpsSlider.ValueChanged += (s, e) =>
             {
                 fpsValueLabel.Text = fpsSlider.Value.ToString();
                 FpsChanged?.Invoke(fpsSlider.Value);
@@ -204,30 +216,30 @@ namespace MosaicCensorSystem.UI
             settingsGroup.Controls.AddRange(new Control[] { fpsLabel, fpsSlider, fpsValueLabel });
             y += 40;
 
-            enableDetectionCheckBox = new CheckBox 
+            enableDetectionCheckBox = new CheckBox
             {
                 Checked = true,
                 Location = new Point(10, y),
                 AutoSize = true
             };
             enableDetectionCheckBox.CheckedChanged += (s, e) => DetectionToggled?.Invoke(enableDetectionCheckBox.Checked);
-            
-            enableCensoringCheckBox = new CheckBox 
+
+            enableCensoringCheckBox = new CheckBox
             {
                 Checked = true,
                 Location = new Point(200, y),
                 AutoSize = true
             };
             enableCensoringCheckBox.CheckedChanged += (s, e) => CensoringToggled?.Invoke(enableCensoringCheckBox.Checked);
-            
+
             settingsGroup.Controls.AddRange(new Control[] { enableDetectionCheckBox, enableCensoringCheckBox });
             y += 30;
 
 #if PATREON_VERSION
-            enableStickersCheckBox = new CheckBox 
-            { 
-                Checked = false, 
-                Location = new Point(10, y), 
+            enableStickersCheckBox = new CheckBox
+            {
+                Checked = false,
+                Location = new Point(10, y),
                 AutoSize = true,
                 Text = "스티커 활성화"
             };
@@ -237,11 +249,10 @@ namespace MosaicCensorSystem.UI
 #endif
 
 #if PATREON_PLUS_VERSION
-            // ★ 캡션 체크박스 추가
-            enableCaptionsCheckBox = new CheckBox 
-            { 
-                Checked = true, 
-                Location = new Point(10, y), 
+            enableCaptionsCheckBox = new CheckBox
+            {
+                Checked = true,
+                Location = new Point(10, y),
                 AutoSize = true,
                 Text = "캡션 활성화"
             };
@@ -250,53 +261,74 @@ namespace MosaicCensorSystem.UI
             y += 30;
 #endif
 
-            mosaicRadioButton = new RadioButton 
+            // DPI 호환성 모드 토글 체크박스
+            enableDpiCompatCheckBox = new CheckBox
+            {
+                Checked = UserSettings.IsCompatibilityModeEnabled(),
+                Location = new Point(10, y),
+                AutoSize = true,
+                Text = "자동 화면 배율 해제"
+            };
+            enableDpiCompatCheckBox.CheckedChanged += (s, e) =>
+            {
+                bool isEnabled = enableDpiCompatCheckBox.Checked;
+                // 저장 설정을 업데이트한다.
+                UserSettings.SetCompatibilityModeEnabled(isEnabled);
+                DpiCompatToggled?.Invoke(isEnabled);
+                // 상태 업데이트 로그
+                LogMessage(isEnabled ? "화면 배율 해제 모드가 활성화되었습니다. 재시작 후 적용됩니다." :
+                                   "화면 배율 해제 모드가 비활성화되었습니다. 재시작 후 적용됩니다.");
+            };
+            settingsGroup.Controls.Add(enableDpiCompatCheckBox);
+            y += 30;
+
+            mosaicRadioButton = new RadioButton
             {
                 Checked = true,
                 Location = new Point(10, y),
                 AutoSize = true
             };
-            blurRadioButton = new RadioButton 
+            blurRadioButton = new RadioButton
             {
                 Location = new Point(100, y),
                 AutoSize = true
             };
-            blackBoxRadioButton = new RadioButton 
+            blackBoxRadioButton = new RadioButton
             {
                 Location = new Point(200, y),
                 AutoSize = true
             };
-            
-            EventHandler censorTypeHandler = (s, e) => 
+
+            EventHandler censorTypeHandler = (s, e) =>
             {
-                if (s is RadioButton rb && rb.Checked) 
+                if (s is RadioButton rb && rb.Checked)
                 {
-                    if (mosaicRadioButton.Checked) 
+                    if (mosaicRadioButton.Checked)
                         CensorTypeChanged?.Invoke(CensorType.Mosaic);
-                    else if (blurRadioButton.Checked) 
+                    else if (blurRadioButton.Checked)
                         CensorTypeChanged?.Invoke(CensorType.Blur);
-                    else if (blackBoxRadioButton.Checked) 
+                    else if (blackBoxRadioButton.Checked)
                         CensorTypeChanged?.Invoke(CensorType.BlackBox);
                 }
             };
             mosaicRadioButton.CheckedChanged += censorTypeHandler;
             blurRadioButton.CheckedChanged += censorTypeHandler;
             blackBoxRadioButton.CheckedChanged += censorTypeHandler;
-            
+
             settingsGroup.Controls.AddRange(new Control[] { mosaicRadioButton, blurRadioButton, blackBoxRadioButton });
             y += 30;
 
             var strengthValueLabel = new Label { Text = "20", Location = new Point(390, y), AutoSize = true };
-            strengthSlider = new TrackBar 
+            strengthSlider = new TrackBar
             {
-                Minimum = 10, 
-                Maximum = 40, 
-                Value = 20, 
+                Minimum = 10,
+                Maximum = 40,
+                Value = 20,
                 TickFrequency = 5,
-                Location = new Point(100, y - 5), 
+                Location = new Point(100, y - 5),
                 Size = new Size(280, 45)
             };
-            strengthSlider.ValueChanged += (s, e) => 
+            strengthSlider.ValueChanged += (s, e) =>
             {
                 strengthValueLabel.Text = strengthSlider.Value.ToString();
                 StrengthChanged?.Invoke(strengthSlider.Value);
@@ -306,16 +338,16 @@ namespace MosaicCensorSystem.UI
             y += 40;
 
             var confidenceValueLabel = new Label { Text = "0.3", Location = new Point(390, y), AutoSize = true };
-            confidenceSlider = new TrackBar 
+            confidenceSlider = new TrackBar
             {
-                Minimum = 10, 
-                Maximum = 90, 
-                Value = 30, 
+                Minimum = 10,
+                Maximum = 90,
+                Value = 30,
                 TickFrequency = 10,
-                Location = new Point(100, y - 5), 
+                Location = new Point(100, y - 5),
                 Size = new Size(280, 45)
             };
-            confidenceSlider.ValueChanged += (s, e) => 
+            confidenceSlider.ValueChanged += (s, e) =>
             {
                 float val = confidenceSlider.Value / 100.0f;
                 confidenceValueLabel.Text = val.ToString("F1");
@@ -324,13 +356,13 @@ namespace MosaicCensorSystem.UI
             confidenceLabel = new Label { Location = new Point(10, y), AutoSize = true };
             settingsGroup.Controls.AddRange(new Control[] { confidenceLabel, confidenceSlider, confidenceValueLabel });
             y += 40;
-            
+
             targetsGroup = new GroupBox { Location = new Point(10, y), Size = new Size(440, 130) };
             var allTargets = new[] { "얼굴", "가슴", "겨드랑이", "보지", "발", "몸 전체", "자지", "팬티", "눈", "손", "교미", "신발", "가슴_옷", "여성" };
             var defaultTargets = new[] { "얼굴", "가슴", "보지", "팬티" };
             for (int i = 0; i < allTargets.Length; i++)
             {
-                var checkbox = new CheckBox 
+                var checkbox = new CheckBox
                 {
                     Text = allTargets[i],
                     Checked = defaultTargets.Contains(allTargets[i]),
@@ -364,7 +396,7 @@ namespace MosaicCensorSystem.UI
                 startButton.Text = GetLocalizedString("ButtonStart");
                 stopButton.Text = GetLocalizedString("ButtonStop");
                 captureButton.Text = GetLocalizedString("ButtonCaptureAndSave");
-                
+
                 settingsGroup.Text = GetLocalizedString("GroupSettings");
                 fpsLabel.Text = GetLocalizedString("LabelFps");
                 enableDetectionCheckBox.Text = GetLocalizedString("LabelDetection");
@@ -384,20 +416,28 @@ namespace MosaicCensorSystem.UI
                 }
 #endif
 
+                if (enableDpiCompatCheckBox != null)
+                {
+                    // 메시지 키가 존재하지 않으면 기본 텍스트를 유지한다
+                    string text = GetLocalizedString("LabelDpiCompat");
+                    if (!string.IsNullOrEmpty(text) && text != "LabelDpiCompat")
+                        enableDpiCompatCheckBox.Text = text;
+                }
+
                 mosaicRadioButton.Text = GetLocalizedString("LabelCensorTypeMosaic");
                 blurRadioButton.Text = GetLocalizedString("LabelCensorTypeBlur");
                 blackBoxRadioButton.Text = GetLocalizedString("LabelCensorTypeBlackBox");
                 strengthLabel.Text = GetLocalizedString("LabelCensorStrength");
                 confidenceLabel.Text = GetLocalizedString("LabelConfidence");
                 targetsGroup.Text = GetLocalizedString("GroupTargets");
-                
+
                 foreach (var kvp in targetCheckBoxes)
                 {
                     var checkbox = kvp.Value;
                     var originalKey = (string)checkbox.Tag ?? kvp.Key;
                     checkbox.Text = GetLocalizedString($"Target_{originalKey}");
                 }
-                
+
                 logGroup.Text = GetLocalizedString("GroupLog");
 
                 if (!string.IsNullOrEmpty(currentGpuStatus))
@@ -416,7 +456,7 @@ namespace MosaicCensorSystem.UI
                 {
                     UpdateStatus(GetLocalizedString("StatusRunning"), Color.Green);
                 }
-                
+
                 UpdateToolTips();
             }
             catch (Exception ex)
@@ -456,6 +496,11 @@ namespace MosaicCensorSystem.UI
                 }
 #endif
 
+                if (enableDpiCompatCheckBox != null)
+                {
+                    toolTip.SetToolTip(enableDpiCompatCheckBox, GetLocalizedString("TooltipDpiCompat"));
+                }
+
                 toolTip.SetToolTip(mosaicRadioButton, GetLocalizedString("TooltipMosaic"));
                 toolTip.SetToolTip(blurRadioButton, GetLocalizedString("TooltipBlur"));
                 toolTip.SetToolTip(blackBoxRadioButton, GetLocalizedString("TooltipBlackBox"));
@@ -487,61 +532,61 @@ namespace MosaicCensorSystem.UI
                 return key;
             }
         }
-        
+
         private void OnTargetChanged(object sender, EventArgs e)
         {
             var selected = targetCheckBoxes.Where(kvp => kvp.Value.Checked).Select(kvp => kvp.Key).ToList();
             TargetsChanged?.Invoke(selected);
         }
 
-        public void UpdateStatus(string message, Color color) 
-        { 
+        public void UpdateStatus(string message, Color color)
+        {
             if (disposed) return;
 
-            if (rootForm.InvokeRequired) 
-            { 
-                rootForm.BeginInvoke(new Action(() => UpdateStatus(message, color))); 
-                return; 
+            if (rootForm.InvokeRequired)
+            {
+                rootForm.BeginInvoke(new Action(() => UpdateStatus(message, color)));
+                return;
             }
 
             if (statusLabel != null)
             {
-                statusLabel.Text = message; 
+                statusLabel.Text = message;
                 statusLabel.ForeColor = color;
             }
         }
 
-        public void LogMessage(string message) 
-        { 
+        public void LogMessage(string message)
+        {
             if (disposed) return;
 
-            if (rootForm.InvokeRequired) 
-            { 
-                rootForm.BeginInvoke(new Action(() => LogMessage(message))); 
-                return; 
+            if (rootForm.InvokeRequired)
+            {
+                rootForm.BeginInvoke(new Action(() => LogMessage(message)));
+                return;
             }
 
             if (logTextBox != null)
             {
-                logTextBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}"); 
-                logTextBox.SelectionStart = logTextBox.Text.Length; 
+                logTextBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
+                logTextBox.SelectionStart = logTextBox.Text.Length;
                 logTextBox.ScrollToCaret();
             }
         }
 
-        public void SetRunningState(bool isRunning) 
-        { 
+        public void SetRunningState(bool isRunning)
+        {
             if (disposed) return;
 
-            if (rootForm.InvokeRequired) 
-            { 
-                rootForm.BeginInvoke(new Action(() => SetRunningState(isRunning))); 
+            if (rootForm.InvokeRequired)
+            {
+                rootForm.BeginInvoke(new Action(() => SetRunningState(isRunning)));
                 return;
             }
 
             if (startButton != null && stopButton != null)
             {
-                startButton.Enabled = !isRunning; 
+                startButton.Enabled = !isRunning;
                 stopButton.Enabled = isRunning;
             }
         }
@@ -555,9 +600,9 @@ namespace MosaicCensorSystem.UI
                 rootForm.BeginInvoke(new Action(() => UpdateGpuStatus(status)));
                 return;
             }
-            
+
             currentGpuStatus = status ?? "CPU";
-            
+
             if (gpuStatusLabel != null)
             {
                 string executionModeText = GetLocalizedString("LabelExecutionMode");
@@ -566,33 +611,33 @@ namespace MosaicCensorSystem.UI
                 gpuStatusLabel.ForeColor = IsGpuStatus(currentGpuStatus) ? Color.Green : Color.OrangeRed;
             }
         }
-        
+
         private string TranslateGpuStatus(string originalStatus)
         {
-            if (string.IsNullOrEmpty(originalStatus)) 
+            if (string.IsNullOrEmpty(originalStatus))
                 return GetLocalizedString("GPU_CPU");
-            
+
             string status = originalStatus.ToLower().Trim();
-            
-            if (status.Contains("cuda")) 
+
+            if (status.Contains("cuda"))
                 return GetLocalizedString("GPU_CUDA");
-            if (status.Contains("directml")) 
+            if (status.Contains("directml"))
                 return GetLocalizedString("GPU_DirectML");
-            if (status.Contains("gpu")) 
-                return GetLocalizedString("GPU_CUDA"); 
-            
+            if (status.Contains("gpu"))
+                return GetLocalizedString("GPU_CUDA");
+
             return GetLocalizedString("GPU_CPU");
         }
-        
+
         private bool IsGpuStatus(string status)
         {
-            if (string.IsNullOrEmpty(status)) 
+            if (string.IsNullOrEmpty(status))
                 return false;
-            
+
             string lowerStatus = status.ToLower().Trim();
-            
-            if (lowerStatus.Contains("cuda") || 
-                lowerStatus.Contains("directml") || 
+
+            if (lowerStatus.Contains("cuda") ||
+                lowerStatus.Contains("directml") ||
                 lowerStatus.Contains("gpu"))
             {
                 if (lowerStatus.Contains("cpu") && !lowerStatus.Contains("gpu"))
@@ -601,7 +646,7 @@ namespace MosaicCensorSystem.UI
                 }
                 return true;
             }
-            
+
             return false;
         }
 

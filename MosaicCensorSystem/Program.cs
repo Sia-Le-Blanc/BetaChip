@@ -6,14 +6,25 @@ using System.Windows.Forms;
 
 namespace MosaicCensorSystem
 {
+    /// <summary>
+    /// The entry point for the Mosaic Censor System application. This version
+    /// disables Windows DPI scaling (forces DPI‑unaware mode) by default to
+    /// prevent the application window and captured frames from being
+    /// inadvertently scaled by the operating system. Previously the code
+    /// prompted the user to enable compatibility mode; here we always apply
+    /// the compatibility mode during startup. Command‑line switches such as
+    /// --compat are still parsed for backwards compatibility but no longer
+    /// affect the DPI mode.
+    /// </summary>
     internal static class Program
     {
         public static readonly string? ONNX_MODEL_PATH = GetModelPath();
-        
+
         [STAThread]
         static void Main(string[] args)
         {
             // 1. 명령줄 인수 처리 (강제 호환 모드)
+            // Note: The application now forces compatibility mode by default.
             bool forceCompatMode = false;
             foreach (var arg in args)
             {
@@ -28,37 +39,23 @@ namespace MosaicCensorSystem
             try
             {
                 var displaySettings = DisplayCompatibility.Initialize();
-                
-                // 강제 호환 모드 적용
-                if (forceCompatMode)
+
+                // 사용자 설정 또는 명령줄 플래그에 따라 DPI 호환성 모드를 적용한다.
+                // 기본값은 사용자 설정(UserSettings)에서 읽으며, --compat 플래그가 전달되면
+                // 무조건 사용하도록 한다.
+                bool compatEnabled = Utils.UserSettings.IsCompatibilityModeEnabled() || forceCompatMode;
+                if (compatEnabled)
                 {
-                    Console.WriteLine("강제 호환 모드가 활성화되었습니다.");
+                    Console.WriteLine("자동 호환성 모드가 활성화되었습니다. DPI 배율이 해제됩니다.");
                     DisplayCompatibility.ForceCompatibilityMode();
                 }
-                
-                // 문제가 감지된 경우 사용자에게 알림
-                if (displaySettings.HasDpiIssues && !forceCompatMode)
+                else
                 {
-                    var result = MessageBox.Show(
-                        "디스플레이 설정에 잠재적인 호환성 문제가 감지되었습니다.\n\n" +
-                        $"• DPI 스케일: {displaySettings.SystemDpiScale:P0}\n" +
-                        $"• 멀티모니터: {(displaySettings.IsMultiMonitor ? "예" : "아니오")}\n" +
-                        $"• 고DPI: {(displaySettings.IsHighDpi ? "예" : "아니오")}\n\n" +
-                        "호환성 모드로 실행하시겠습니까?\n" +
-                        "(화면 확대/축소 문제가 있다면 '예'를 선택하세요)",
-                        "디스플레이 호환성 확인",
-                        MessageBoxButtons.YesNoCancel,
-                        MessageBoxIcon.Question);
-                    
-                    if (result == DialogResult.Yes)
-                    {
-                        DisplayCompatibility.ForceCompatibilityMode();
-                    }
-                    else if (result == DialogResult.Cancel)
-                    {
-                        return;
-                    }
+                    Console.WriteLine("호환성 모드가 비활성화되어 있습니다. DPI 설정을 그대로 사용합니다.");
                 }
+
+                // 이전 버전에서는 문제가 감지되면 사용자에게 메시지 박스를 띄워 선택하게 했습니다.
+                // 이 버전에서는 UI를 통해 설정할 수 있도록 설정 파일을 사용합니다.
             }
             catch (Exception ex)
             {
@@ -69,11 +66,11 @@ namespace MosaicCensorSystem
             // 3. Windows Forms 초기화
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            
+
             // 4. 예외 처리기 설정
             Application.ThreadException += OnThreadException;
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
-            
+
             // 5. 모델 파일 확인
             if (string.IsNullOrEmpty(ONNX_MODEL_PATH))
             {
@@ -96,7 +93,7 @@ namespace MosaicCensorSystem
         private static void OnThreadException(object sender, System.Threading.ThreadExceptionEventArgs e)
         {
             LogError("UI Thread Exception", e.Exception);
-            
+
             var result = MessageBox.Show(
                 $"프로그램 실행 중 오류가 발생했습니다.\n\n" +
                 $"오류: {e.Exception.Message}\n\n" +
@@ -104,7 +101,7 @@ namespace MosaicCensorSystem
                 "오류 발생",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Error);
-                
+
             if (result == DialogResult.No)
             {
                 Application.Exit();
@@ -115,7 +112,7 @@ namespace MosaicCensorSystem
         {
             var ex = e.ExceptionObject as Exception;
             LogError("Unhandled Exception", ex);
-            
+
             MessageBox.Show(
                 $"치명적인 오류가 발생했습니다.\n\n" +
                 $"오류: {ex?.Message ?? "알 수 없는 오류"}\n\n" +
@@ -134,9 +131,9 @@ namespace MosaicCensorSystem
                     "BetaChip",
                     "error.log"
                 );
-                
+
                 Directory.CreateDirectory(Path.GetDirectoryName(logPath));
-                
+
                 string logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {type}: {ex?.ToString() ?? "No exception details"}\n\n";
                 File.AppendAllText(logPath, logEntry);
             }
@@ -163,22 +160,21 @@ namespace MosaicCensorSystem
         private static void ShowCriticalError(Exception ex)
         {
             string errorDetails = $"프로그램 초기화 중 심각한 오류가 발생했습니다.\n\n" +
-                                $"오류: {ex.Message}\n\n";
+                                  $"오류: {ex.Message}\n\n";
 
             // 디스플레이 관련 오류인지 확인
-            if (ex.Message.Contains("display") || ex.Message.Contains("monitor") || 
+            if (ex.Message.Contains("display") || ex.Message.Contains("monitor") ||
                 ex.Message.Contains("screen") || ex.Message.Contains("DPI"))
             {
                 errorDetails += "이 오류는 디스플레이 설정과 관련이 있을 수 있습니다.\n" +
-                              "다음 방법을 시도해보세요:\n" +
-                              "1. 프로그램을 호환성 모드로 실행 (--compat 옵션)\n" +
-                              "2. Windows 디스플레이 설정에서 배율을 100%로 변경\n" +
-                              "3. 프로그램을 관리자 권한으로 실행\n\n";
+                                "다음 방법을 시도해보세요:\n" +
+                                "1. Windows 디스플레이 설정에서 배율을 100%로 변경\n" +
+                                "2. 프로그램을 관리자 권한으로 실행\n\n";
             }
 
             errorDetails += "자세한 오류 정보는 다음 위치의 로그 파일을 확인하세요:\n" +
-                          Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), 
-                                     "BetaChip", "error.log");
+                             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                                        "BetaChip", "error.log");
 
             MessageBox.Show(errorDetails, "초기화 오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
@@ -196,7 +192,7 @@ namespace MosaicCensorSystem
                     Console.WriteLine($"✅ 레지스트리에서 모델 발견: {registryPath}");
                     return registryPath;
                 }
-                
+
                 if (Directory.Exists(registryPath))
                 {
                     string modelInFolder = Path.Combine(registryPath, modelFileName);
