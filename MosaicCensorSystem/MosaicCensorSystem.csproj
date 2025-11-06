@@ -100,6 +100,16 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="Utils\DisplayCompatibility.cs" />
+    <Content Include="..\RunBetaChip.bat">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\BetaChip_AutoDiagnose.bat">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
   <!-- 빌드 후 작업: 버전 정보 출력 -->
   <Target Name="ShowBuildInfo" AfterTargets="Build">
     <Message Text="====================================" Importance="high" />

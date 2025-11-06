@@ -5,83 +5,107 @@ using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
+using MosaicCensorSystem.Utils;
 
 namespace MosaicCensorSystem.Overlay
 {
+    /// <summary>
+    /// 모든 디스플레이 환경에서 안정적으로 동작하는 개선된 오버레이
+    /// </summary>
     public class FullscreenOverlay : Form, IOverlay
     {
         #region Windows API
-        // ★★★ 생략되었던 Windows API 선언부 전체 복원 ★★★
         private const int WS_EX_LAYERED = 0x00080000;
         private const int WS_EX_TRANSPARENT = 0x00000020;
+        private const int WS_EX_NOACTIVATE = 0x08000000;
+        private const int WS_EX_TOOLWINDOW = 0x00000080;
         private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+        private const uint WDA_NONE = 0x00000000;
 
-        [DllImport("user32.dll")] private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
-        [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
-        [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY);
+        [DllImport("user32.dll")] 
+        private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
         
-        private const uint MONITOR_DEFAULTTONEAREST = 2;
-        private const int MDT_EFFECTIVE_DPI = 0;
+        [DllImport("user32.dll")]
+        private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
+        
+        private const uint LWA_COLORKEY = 0x00000001;
         #endregion
 
         private Bitmap currentBitmap;
         private readonly object bitmapLock = new object();
-        private float dpiScaleX = 1.0f;
-        private float dpiScaleY = 1.0f;
-
-        private static readonly Color TRANSPARENCY_KEY = Color.FromArgb(255, 0, 255); // 매젠타
+        private static readonly Color TRANSPARENCY_KEY = Color.FromArgb(255, 0, 255); // 마젠타
+        
+        private Rectangle originalBounds;
+        private bool isCompatibilityMode = false;
+        private DisplayCompatibility.DisplaySettings displaySettings;
         
         public FullscreenOverlay(Rectangle bounds) : this()
         {
-            UpdateDpiScale(); 
-            SetMonitorBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+            originalBounds = bounds;
+            ApplyMonitorBounds();
         }
 
         public FullscreenOverlay()
         {
-            this.FormBorderStyle = FormBorderStyle.None;
-            this.WindowState = FormWindowState.Maximized;
-            this.TopMost = true;
-            this.ShowInTaskbar = false;
+            // 디스플레이 호환성 설정 가져오기
+            displaySettings = DisplayCompatibility.GetCurrentSettings();
+            isCompatibilityMode = displaySettings?.HasDpiIssues ?? false;
             
-            this.BackColor = TRANSPARENCY_KEY;
-            this.TransparencyKey = TRANSPARENCY_KEY;
-
-            this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
-        }
-
-        public void UpdateFrame(Mat processedFrame)
-        {
-            if (processedFrame == null || processedFrame.Empty()) return;
-
-            using Mat transparentFrame = ConvertBlackToTransparent(processedFrame);
-            Bitmap newBitmap = BitmapConverter.ToBitmap(transparentFrame);
-
-            if (this.InvokeRequired)
+            // 기본 Form 설정
+            this.FormBorderStyle = FormBorderStyle.None;
+            this.ShowInTaskbar = false;
+            this.TopMost = true;
+            
+            // DPI 문제가 있는 경우 특별 처리
+            if (isCompatibilityMode)
             {
-                try
-                {
-                    this.Invoke(new Action(() => UpdateBitmapAndInvalidate(newBitmap)));
-                }
-                catch (ObjectDisposedException)
-                {
-                    newBitmap.Dispose();
-                }
+                this.AutoScaleMode = AutoScaleMode.None;
+                Console.WriteLine("[Overlay] 호환성 모드로 실행됨");
             }
             else
             {
-                UpdateBitmapAndInvalidate(newBitmap);
+                this.AutoScaleMode = AutoScaleMode.Dpi;
             }
+            
+            // 투명도 설정
+            this.BackColor = TRANSPARENCY_KEY;
+            this.TransparencyKey = TRANSPARENCY_KEY;
+            
+            // 더블 버퍼링 활성화
+            this.SetStyle(
+                ControlStyles.AllPaintingInWmPaint | 
+                ControlStyles.UserPaint | 
+                ControlStyles.OptimizedDoubleBuffer | 
+                ControlStyles.ResizeRedraw,
+                true
+            );
+            
+            // 기본 위치 설정
+            this.StartPosition = FormStartPosition.Manual;
+            originalBounds = Screen.PrimaryScreen.Bounds;
         }
 
-        private void UpdateBitmapAndInvalidate(Bitmap newBitmap)
+        private void ApplyMonitorBounds()
         {
-            lock (bitmapLock)
+            try
             {
-                currentBitmap?.Dispose();
-                currentBitmap = newBitmap;
+                // 호환성 모드에서는 안전한 경계 사용
+                Rectangle safeBounds = isCompatibilityMode 
+                    ? DisplayCompatibility.GetSafeOverlayBounds(originalBounds)
+                    : originalBounds;
+                
+                this.Location = new Point(safeBounds.X, safeBounds.Y);
+                this.Size = new Size(safeBounds.Width, safeBounds.Height);
+                this.WindowState = FormWindowState.Normal;
+                
+                Console.WriteLine($"[Overlay] Bounds 적용: {safeBounds}");
             }
-            this.Invalidate();
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Overlay] Bounds 적용 실패, 기본값 사용: {ex.Message}");
+                // 실패 시 전체 화면으로 폴백
+                this.WindowState = FormWindowState.Maximized;
+            }
         }
 
         protected override CreateParams CreateParams
@@ -90,6 +114,10 @@ namespace MosaicCensorSystem.Overlay
             {
                 CreateParams cp = base.CreateParams;
                 cp.ExStyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT;
+                
+                // 추가 플래그로 안정성 향상
+                cp.ExStyle |= WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
+                
                 return cp;
             }
         }
@@ -97,36 +125,108 @@ namespace MosaicCensorSystem.Overlay
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            UpdateDpiScale();
+            
+            // 캡처 방지 설정 (선택적)
             try
             {
-                SetWindowDisplayAffinity(this.Handle, WDA_EXCLUDEFROMCAPTURE);
+                // 일부 환경에서는 이 설정이 문제를 일으킬 수 있음
+                if (!isCompatibilityMode)
+                {
+                    SetWindowDisplayAffinity(this.Handle, WDA_EXCLUDEFROMCAPTURE);
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️ 캡처 방지 설정 실패: {ex.Message}");
+                Console.WriteLine($"[Overlay] 캡처 방지 설정 실패 (무시됨): {ex.Message}");
+            }
+            
+            // 레이어드 윈도우 속성 명시적 설정
+            try
+            {
+                uint colorKey = (uint)ColorTranslator.ToWin32(TRANSPARENCY_KEY);
+                SetLayeredWindowAttributes(this.Handle, colorKey, 255, LWA_COLORKEY);
+            }
+            catch { }
+        }
+
+        public void UpdateFrame(Mat processedFrame)
+        {
+            if (processedFrame == null || processedFrame.Empty()) return;
+
+            try
+            {
+                using Mat transparentFrame = ConvertBlackToTransparent(processedFrame);
+                
+                // 호환성 모드에서는 리사이징 수행
+                if (isCompatibilityMode && NeedsResize(transparentFrame))
+                {
+                    using Mat resizedFrame = ResizeFrameForDisplay(transparentFrame);
+                    UpdateBitmap(resizedFrame);
+                }
+                else
+                {
+                    UpdateBitmap(transparentFrame);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Overlay] 프레임 업데이트 실패: {ex.Message}");
             }
         }
 
-        private void UpdateDpiScale()
+        private bool NeedsResize(Mat frame)
         {
-            try
+            // 프레임 크기와 윈도우 크기가 크게 다른 경우
+            return Math.Abs(frame.Width - this.ClientSize.Width) > 10 ||
+                   Math.Abs(frame.Height - this.ClientSize.Height) > 10;
+        }
+
+        private Mat ResizeFrameForDisplay(Mat frame)
+        {
+            Mat resized = new Mat();
+            Cv2.Resize(frame, resized, 
+                new OpenCvSharp.Size(this.ClientSize.Width, this.ClientSize.Height),
+                interpolation: InterpolationFlags.Linear);
+            return resized;
+        }
+
+        private void UpdateBitmap(Mat frame)
+        {
+            Bitmap newBitmap = BitmapConverter.ToBitmap(frame);
+            
+            if (this.InvokeRequired)
             {
-                IntPtr monitor = MonitorFromWindow(this.Handle, MONITOR_DEFAULTTONEAREST);
-                GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, out uint dpiX, out uint dpiY);
-                dpiScaleX = dpiX / 96.0f;
-                dpiScaleY = dpiY / 96.0f;
+                try
+                {
+                    this.BeginInvoke(new Action(() => SwapBitmap(newBitmap)));
+                }
+                catch (ObjectDisposedException)
+                {
+                    newBitmap?.Dispose();
+                }
             }
-            catch
+            else
             {
-                dpiScaleX = dpiScaleY = 1.0f;
+                SwapBitmap(newBitmap);
             }
+        }
+
+        private void SwapBitmap(Bitmap newBitmap)
+        {
+            lock (bitmapLock)
+            {
+                var oldBitmap = currentBitmap;
+                currentBitmap = newBitmap;
+                oldBitmap?.Dispose();
+            }
+            this.Invalidate();
         }
 
         private Mat ConvertBlackToTransparent(Mat originalFrame)
         {
             Mat result = new Mat();
             
+            // BGRA로 변환
             if (originalFrame.Channels() == 3)
             {
                 Cv2.CvtColor(originalFrame, result, ColorConversionCodes.BGR2BGRA);
@@ -136,42 +236,91 @@ namespace MosaicCensorSystem.Overlay
                 result = originalFrame.Clone();
             }
 
-            using Mat transparencyMask = new Mat();
-            Cv2.InRange(result, new Scalar(3, 3, 3, 0), new Scalar(3, 3, 3, 255), transparencyMask);
-            result.SetTo(new Scalar(255, 0, 255, 255), transparencyMask); // 매젠타 (BGRA)
+            // 검은색 픽셀을 투명색(마젠타)로 변환
+            using Mat mask = new Mat();
+            Cv2.InRange(result, new Scalar(0, 0, 0, 0), new Scalar(10, 10, 10, 255), mask);
+            result.SetTo(new Scalar(255, 0, 255, 255), mask); // 마젠타 (BGRA)
             
             return result;
         }
 
         public void SetMonitorBounds(int x, int y, int width, int height)
         {
-            this.StartPosition = FormStartPosition.Manual;
+            originalBounds = new Rectangle(x, y, width, height);
             
-            int scaledX = (int)(x / dpiScaleX);
-            int scaledY = (int)(y / dpiScaleY);
-            int scaledWidth = (int)(width / dpiScaleX);
-            int scaledHeight = (int)(height / dpiScaleY);
-            
-            this.Location = new System.Drawing.Point(scaledX, scaledY);
-            this.Size = new System.Drawing.Size(scaledWidth, scaledHeight);
-            this.WindowState = FormWindowState.Normal;
+            if (this.InvokeRequired)
+            {
+                this.BeginInvoke(new Action(() => ApplyMonitorBounds()));
+            }
+            else
+            {
+                ApplyMonitorBounds();
+            }
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
+            
             lock (bitmapLock)
             {
+                // 배경을 투명색으로 채우기
                 using (SolidBrush brush = new SolidBrush(this.TransparencyKey))
                 {
                     e.Graphics.FillRectangle(brush, this.ClientRectangle);
                 }
 
-                if (currentBitmap != null)
+                // 비트맵 그리기
+                if (currentBitmap != null && !currentBitmap.Size.IsEmpty)
                 {
-                    Rectangle destRect = new Rectangle(0, 0, this.ClientRectangle.Width, this.ClientRectangle.Height);
-                    e.Graphics.DrawImage(currentBitmap, destRect);
+                    try
+                    {
+                        // 호환성 모드에서는 스트레치 그리기
+                        if (isCompatibilityMode)
+                        {
+                            e.Graphics.DrawImage(currentBitmap, this.ClientRectangle);
+                        }
+                        else
+                        {
+                            e.Graphics.DrawImage(currentBitmap, Point.Empty);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Overlay] 그리기 실패: {ex.Message}");
+                    }
                 }
+            }
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            this.Invalidate();
+        }
+
+        public new void Show()
+        {
+            try
+            {
+                base.Show();
+                this.BringToFront();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Overlay] Show 실패: {ex.Message}");
+            }
+        }
+
+        public new void Hide()
+        {
+            try
+            {
+                base.Hide();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Overlay] Hide 실패: {ex.Message}");
             }
         }
 
@@ -182,9 +331,21 @@ namespace MosaicCensorSystem.Overlay
                 lock (bitmapLock)
                 {
                     currentBitmap?.Dispose();
+                    currentBitmap = null;
                 }
             }
             base.Dispose(disposing);
+        }
+
+        /// <summary>
+        /// 강제 호환성 모드 전환
+        /// </summary>
+        public void EnableCompatibilityMode()
+        {
+            isCompatibilityMode = true;
+            this.AutoScaleMode = AutoScaleMode.None;
+            ApplyMonitorBounds();
+            Console.WriteLine("[Overlay] 호환성 모드 강제 활성화됨");
         }
     }
 }
