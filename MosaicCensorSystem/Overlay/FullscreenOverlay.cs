@@ -133,17 +133,16 @@ namespace MosaicCensorSystem.Overlay
         {
             base.OnLoad(e);
 
-            // 캡처 방지 설정 (선택적)
+            // 캡처 방지 설정: 오버레이가 화면 캡처에 포함되지 않도록 항상 설정합니다.
             try
             {
-                // 일부 환경에서는 이 설정이 문제를 일으킬 수 있음
-                if (!isCompatibilityMode)
-                {
-                    SetWindowDisplayAffinity(this.Handle, WDA_EXCLUDEFROMCAPTURE);
-                }
+                // Windows 10(1703) 이상에서 지원되는 기능으로, 호환성 모드 여부와 관계없이 적용해줍니다.
+                // 이 호출을 통해 오버레이가 BitBlt를 통해 캡처되지 않도록 합니다.
+                SetWindowDisplayAffinity(this.Handle, WDA_EXCLUDEFROMCAPTURE);
             }
             catch (Exception ex)
             {
+                // 일부 구형 환경에서는 DisplayAffinity 설정이 실패할 수 있지만 무시합니다.
                 Console.WriteLine($"[Overlay] 캡처 방지 설정 실패 (무시됨): {ex.Message}");
             }
 
