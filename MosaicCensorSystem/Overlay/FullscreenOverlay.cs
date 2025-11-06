@@ -7,6 +7,12 @@ using OpenCvSharp;
 using OpenCvSharp.Extensions;
 using MosaicCensorSystem.Utils;
 
+// 별칭을 정의하여 System.Drawing과 OpenCvSharp의 Point/Size 충돌을 방지합니다.
+using DrawingPoint = System.Drawing.Point;
+using DrawingSize  = System.Drawing.Size;
+using CvPoint      = OpenCvSharp.Point;
+using CvSize       = OpenCvSharp.Size;
+
 namespace MosaicCensorSystem.Overlay
 {
     /// <summary>
@@ -22,23 +28,23 @@ namespace MosaicCensorSystem.Overlay
         private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
         private const uint WDA_NONE = 0x00000000;
 
-        [DllImport("user32.dll")] 
+        [DllImport("user32.dll")]
         private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
-        
+
         [DllImport("user32.dll")]
         private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
-        
+
         private const uint LWA_COLORKEY = 0x00000001;
         #endregion
 
         private Bitmap currentBitmap;
         private readonly object bitmapLock = new object();
         private static readonly Color TRANSPARENCY_KEY = Color.FromArgb(255, 0, 255); // 마젠타
-        
+
         private Rectangle originalBounds;
         private bool isCompatibilityMode = false;
         private DisplayCompatibility.DisplaySettings displaySettings;
-        
+
         public FullscreenOverlay(Rectangle bounds) : this()
         {
             originalBounds = bounds;
@@ -50,12 +56,12 @@ namespace MosaicCensorSystem.Overlay
             // 디스플레이 호환성 설정 가져오기
             displaySettings = DisplayCompatibility.GetCurrentSettings();
             isCompatibilityMode = displaySettings?.HasDpiIssues ?? false;
-            
+
             // 기본 Form 설정
             this.FormBorderStyle = FormBorderStyle.None;
             this.ShowInTaskbar = false;
             this.TopMost = true;
-            
+
             // DPI 문제가 있는 경우 특별 처리
             if (isCompatibilityMode)
             {
@@ -66,20 +72,20 @@ namespace MosaicCensorSystem.Overlay
             {
                 this.AutoScaleMode = AutoScaleMode.Dpi;
             }
-            
+
             // 투명도 설정
             this.BackColor = TRANSPARENCY_KEY;
             this.TransparencyKey = TRANSPARENCY_KEY;
-            
+
             // 더블 버퍼링 활성화
             this.SetStyle(
-                ControlStyles.AllPaintingInWmPaint | 
-                ControlStyles.UserPaint | 
-                ControlStyles.OptimizedDoubleBuffer | 
+                ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.UserPaint |
+                ControlStyles.OptimizedDoubleBuffer |
                 ControlStyles.ResizeRedraw,
                 true
             );
-            
+
             // 기본 위치 설정
             this.StartPosition = FormStartPosition.Manual;
             originalBounds = Screen.PrimaryScreen.Bounds;
@@ -90,14 +96,15 @@ namespace MosaicCensorSystem.Overlay
             try
             {
                 // 호환성 모드에서는 안전한 경계 사용
-                Rectangle safeBounds = isCompatibilityMode 
+                Rectangle safeBounds = isCompatibilityMode
                     ? DisplayCompatibility.GetSafeOverlayBounds(originalBounds)
                     : originalBounds;
-                
-                this.Location = new Point(safeBounds.X, safeBounds.Y);
-                this.Size = new Size(safeBounds.Width, safeBounds.Height);
+
+                // 명시적으로 System.Drawing의 Point와 Size를 사용
+                this.Location = new DrawingPoint(safeBounds.X, safeBounds.Y);
+                this.Size = new DrawingSize(safeBounds.Width, safeBounds.Height);
                 this.WindowState = FormWindowState.Normal;
-                
+
                 Console.WriteLine($"[Overlay] Bounds 적용: {safeBounds}");
             }
             catch (Exception ex)
@@ -114,10 +121,10 @@ namespace MosaicCensorSystem.Overlay
             {
                 CreateParams cp = base.CreateParams;
                 cp.ExStyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT;
-                
+
                 // 추가 플래그로 안정성 향상
                 cp.ExStyle |= WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
-                
+
                 return cp;
             }
         }
@@ -125,7 +132,7 @@ namespace MosaicCensorSystem.Overlay
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            
+
             // 캡처 방지 설정 (선택적)
             try
             {
@@ -139,7 +146,7 @@ namespace MosaicCensorSystem.Overlay
             {
                 Console.WriteLine($"[Overlay] 캡처 방지 설정 실패 (무시됨): {ex.Message}");
             }
-            
+
             // 레이어드 윈도우 속성 명시적 설정
             try
             {
@@ -156,7 +163,7 @@ namespace MosaicCensorSystem.Overlay
             try
             {
                 using Mat transparentFrame = ConvertBlackToTransparent(processedFrame);
-                
+
                 // 호환성 모드에서는 리사이징 수행
                 if (isCompatibilityMode && NeedsResize(transparentFrame))
                 {
@@ -184,8 +191,8 @@ namespace MosaicCensorSystem.Overlay
         private Mat ResizeFrameForDisplay(Mat frame)
         {
             Mat resized = new Mat();
-            Cv2.Resize(frame, resized, 
-                new OpenCvSharp.Size(this.ClientSize.Width, this.ClientSize.Height),
+            Cv2.Resize(frame, resized,
+                new CvSize(this.ClientSize.Width, this.ClientSize.Height),
                 interpolation: InterpolationFlags.Linear);
             return resized;
         }
@@ -193,7 +200,7 @@ namespace MosaicCensorSystem.Overlay
         private void UpdateBitmap(Mat frame)
         {
             Bitmap newBitmap = BitmapConverter.ToBitmap(frame);
-            
+
             if (this.InvokeRequired)
             {
                 try
@@ -225,7 +232,7 @@ namespace MosaicCensorSystem.Overlay
         private Mat ConvertBlackToTransparent(Mat originalFrame)
         {
             Mat result = new Mat();
-            
+
             // BGRA로 변환
             if (originalFrame.Channels() == 3)
             {
@@ -240,14 +247,14 @@ namespace MosaicCensorSystem.Overlay
             using Mat mask = new Mat();
             Cv2.InRange(result, new Scalar(0, 0, 0, 0), new Scalar(10, 10, 10, 255), mask);
             result.SetTo(new Scalar(255, 0, 255, 255), mask); // 마젠타 (BGRA)
-            
+
             return result;
         }
 
         public void SetMonitorBounds(int x, int y, int width, int height)
         {
             originalBounds = new Rectangle(x, y, width, height);
-            
+
             if (this.InvokeRequired)
             {
                 this.BeginInvoke(new Action(() => ApplyMonitorBounds()));
@@ -261,7 +268,7 @@ namespace MosaicCensorSystem.Overlay
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            
+
             lock (bitmapLock)
             {
                 // 배경을 투명색으로 채우기
@@ -282,7 +289,8 @@ namespace MosaicCensorSystem.Overlay
                         }
                         else
                         {
-                            e.Graphics.DrawImage(currentBitmap, Point.Empty);
+                            // 명시적으로 DrawingPoint.Empty 사용
+                            e.Graphics.DrawImage(currentBitmap, DrawingPoint.Empty);
                         }
                     }
                     catch (Exception ex)

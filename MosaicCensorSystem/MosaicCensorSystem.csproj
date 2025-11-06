@@ -101,7 +101,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="Utils\DisplayCompatibility.cs" />
+    <!-- <Compile Include="Utils\DisplayCompatibility.cs" /> 여기서 이 줄을 삭제해야 합니다 -->
     <Content Include="..\RunBetaChip.bat">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
