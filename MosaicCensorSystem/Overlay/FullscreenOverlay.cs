@@ -244,7 +244,7 @@ namespace MosaicCensorSystem.Overlay
 
             // 검은색 픽셀을 투명색(마젠타)로 변환
             using Mat mask = new Mat();
-            Cv2.InRange(result, new Scalar(0, 0, 0, 0), new Scalar(10, 10, 10, 255), mask);
+            Cv2.InRange(result, new Scalar(3, 3, 3, 0), new Scalar(3, 3, 3, 255), mask);
             result.SetTo(new Scalar(255, 0, 255, 255), mask); // 마젠타 (BGRA)
 
             return result;
