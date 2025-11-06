@@ -182,9 +182,10 @@ namespace MosaicCensorSystem.Overlay
 
         private bool NeedsResize(Mat frame)
         {
-            // 프레임 크기와 윈도우 크기가 크게 다른 경우
-            return Math.Abs(frame.Width - this.ClientSize.Width) > 10 ||
-                   Math.Abs(frame.Height - this.ClientSize.Height) > 10;
+            // 프레임 크기와 윈도우 크기가 다르면 리사이즈가 필요하다.
+            // 차이를 1픽셀까지 허용하지만 그 이상이면 맞춰준다.
+            return Math.Abs(frame.Width - this.ClientSize.Width) > 1 ||
+                   Math.Abs(frame.Height - this.ClientSize.Height) > 1;
         }
 
         private Mat ResizeFrameForDisplay(Mat frame)
@@ -192,7 +193,7 @@ namespace MosaicCensorSystem.Overlay
             Mat resized = new Mat();
             Cv2.Resize(frame, resized,
                 new CvSize(this.ClientSize.Width, this.ClientSize.Height),
-                interpolation: InterpolationFlags.Linear);
+                interpolation: InterpolationFlags.Nearest);
             return resized;
         }
 
@@ -242,7 +243,6 @@ namespace MosaicCensorSystem.Overlay
                 result = originalFrame.Clone();
             }
 
-            // 검은색 픽셀을 투명색(마젠타)로 변환
             using Mat mask = new Mat();
             Cv2.InRange(result, new Scalar(3, 3, 3, 0), new Scalar(3, 3, 3, 255), mask);
             result.SetTo(new Scalar(255, 0, 255, 255), mask); // 마젠타 (BGRA)
