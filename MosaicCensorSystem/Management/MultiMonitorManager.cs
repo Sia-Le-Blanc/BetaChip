@@ -34,7 +34,7 @@ namespace MosaicCensorSystem.Management // 네임스페이스 변경
         private GuiController ui;
         private readonly List<MonitorTask> monitorTasks = new List<MonitorTask>();
         private volatile bool isRunning = false;
-        private CensorSettings settings;
+        private CensorSettings settings = new(true, true, false, true, 15);
         private Func<Mat, Mat> processFrame;
 
         public IReadOnlyList<Screen> Monitors { get; }
@@ -116,7 +116,8 @@ namespace MosaicCensorSystem.Management // 네임스페이스 변경
                 }
 
                 var elapsedMs = (DateTime.Now - frameStart).TotalMilliseconds;
-                int delay = (1000 / settings.TargetFPS) - (int)elapsedMs;
+                int targetFps = Math.Max(1, settings?.TargetFPS ?? 15);
+                int delay = (1000 / targetFps) - (int)elapsedMs;
                 if (delay > 0) Thread.Sleep(delay);
             }
             // 루프가 끝나면 오버레이를 숨겨줍니다.
