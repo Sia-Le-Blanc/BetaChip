@@ -1,9 +1,9 @@
-; Inno Setup 스크립트 - BetaChip 후원자 플러스용 (v2.5.0)
+; Inno Setup 스크립트 - BetaChip 후원자 플러스용 (v3.0.0)
 ; 레지스트리 기반 경로 관리 + 캡션 기능 포함
 
 #define MyAppName "BetaChip"
 #define MyAppDisplayName "BetaChip - 후원자 플러스용"
-#define MyAppVersion "2.5.0-PatreonPlus"
+#define MyAppVersion "3.0.0-PatreonPlus"
 #define MyAppPublisher "Sia"
 #define MyAppURL "https://github.com/Sia-Le-Blanc/BetaChip"
 #define MyAppExeName "MosaicCensorSystem.exe"
