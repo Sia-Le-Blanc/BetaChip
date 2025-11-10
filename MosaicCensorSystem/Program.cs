@@ -6,16 +6,6 @@ using System.Windows.Forms;
 
 namespace MosaicCensorSystem
 {
-    /// <summary>
-    /// The entry point for the Mosaic Censor System application. This version
-    /// disables Windows DPI scaling (forces DPI‑unaware mode) by default to
-    /// prevent the application window and captured frames from being
-    /// inadvertently scaled by the operating system. Previously the code
-    /// prompted the user to enable compatibility mode; here we always apply
-    /// the compatibility mode during startup. Command‑line switches such as
-    /// --compat are still parsed for backwards compatibility but no longer
-    /// affect the DPI mode.
-    /// </summary>
     internal static class Program
     {
         public static readonly string? ONNX_MODEL_PATH = GetModelPath();
@@ -23,8 +13,7 @@ namespace MosaicCensorSystem
         [STAThread]
         static void Main(string[] args)
         {
-            // 1. 명령줄 인수 처리 (강제 호환 모드)
-            // Note: The application now forces compatibility mode by default.
+            // 1. 명령줄 인수 처리
             bool forceCompatMode = false;
             foreach (var arg in args)
             {
@@ -40,9 +29,6 @@ namespace MosaicCensorSystem
             {
                 var displaySettings = DisplayCompatibility.Initialize();
 
-                // 사용자 설정 또는 명령줄 플래그에 따라 DPI 호환성 모드를 적용한다.
-                // 기본값은 사용자 설정(UserSettings)에서 읽으며, --compat 플래그가 전달되면
-                // 무조건 사용하도록 한다.
                 bool compatEnabled = Utils.UserSettings.IsCompatibilityModeEnabled() || forceCompatMode;
                 if (compatEnabled)
                 {
@@ -53,14 +39,10 @@ namespace MosaicCensorSystem
                 {
                     Console.WriteLine("호환성 모드가 비활성화되어 있습니다. DPI 설정을 그대로 사용합니다.");
                 }
-
-                // 이전 버전에서는 문제가 감지되면 사용자에게 메시지 박스를 띄워 선택하게 했습니다.
-                // 이 버전에서는 UI를 통해 설정할 수 있도록 설정 파일을 사용합니다.
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"디스플레이 호환성 초기화 실패: {ex.Message}");
-                // 실패해도 계속 진행 (기본 설정 사용)
             }
 
             // 3. Windows Forms 초기화
@@ -162,7 +144,6 @@ namespace MosaicCensorSystem
             string errorDetails = $"프로그램 초기화 중 심각한 오류가 발생했습니다.\n\n" +
                                   $"오류: {ex.Message}\n\n";
 
-            // 디스플레이 관련 오류인지 확인
             if (ex.Message.Contains("display") || ex.Message.Contains("monitor") ||
                 ex.Message.Contains("screen") || ex.Message.Contains("DPI"))
             {
@@ -183,10 +164,11 @@ namespace MosaicCensorSystem
         {
             const string modelFileName = "best.onnx";
 
-            // 1. 레지스트리에서 찾기
+            // 1. 레지스트리에서 찾기 (최우선)
             string? registryPath = GetPathFromRegistry("ModelPath");
             if (!string.IsNullOrEmpty(registryPath))
             {
+                // 레지스트리 값이 파일 경로인지 폴더 경로인지 확인
                 if (File.Exists(registryPath))
                 {
                     Console.WriteLine($"✅ 레지스트리에서 모델 발견: {registryPath}");
@@ -202,6 +184,8 @@ namespace MosaicCensorSystem
                         return modelInFolder;
                     }
                 }
+                
+                Console.WriteLine($"⚠️ 레지스트리 경로가 유효하지 않음: {registryPath}");
             }
 
             // 2. 실행 파일 기준 상대 경로
@@ -220,7 +204,12 @@ namespace MosaicCensorSystem
                 return directPath;
             }
 
-            Console.WriteLine("❌ 모델 파일을 찾을 수 없습니다.");
+            // 모든 가능한 경로 출력
+            Console.WriteLine("❌ 모델 파일을 찾을 수 없습니다. 시도한 경로:");
+            Console.WriteLine($"  - 레지스트리: {registryPath ?? "(없음)"}");
+            Console.WriteLine($"  - Resources 폴더: {localPath}");
+            Console.WriteLine($"  - 실행 폴더: {directPath}");
+            
             return null;
         }
 
@@ -242,11 +231,15 @@ namespace MosaicCensorSystem
                         string normalized = NormalizePath(rawPath);
                         if (!string.IsNullOrEmpty(normalized))
                         {
+                            Console.WriteLine($"✅ 레지스트리에서 경로 발견: {normalized}");
                             return normalized;
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ 레지스트리 읽기 실패 ({view}): {ex.Message}");
+                }
             }
 
             return null;

@@ -1,4 +1,4 @@
-; Inno Setup 스크립트 - BetaChip 후원자 플러스용 (v3.0.0)
+; Inno Setup 스크립트 - BetaChip 후원자 플러스용 (v3.0.1)
 ; 레지스트리 기반 경로 관리 + 캡션 기능 포함
 
 #define MyAppName "BetaChip"
@@ -46,10 +46,14 @@ Source: "{#MyBuildPath}\Stickers\*"; DestDir: "{app}\Stickers"; Flags: ignorever
 Source: "{#MyBuildPath}\Resources\OverlayText\*"; DestDir: "{app}\Resources\OverlayText"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Registry]
-; 모델, 스티커, 캡션 폴더의 절대 경로를 레지스트리에 기록합니다.
+; 파일의 전체 경로를 저장
 Root: HKLM64; Subkey: "SOFTWARE\{#MyAppName}\MosaicCensorSystem"; ValueType: string; ValueName: "ModelPath"; ValueData: "{app}\Resources\best.onnx"; Flags: uninsdeletekey
 Root: HKLM64; Subkey: "SOFTWARE\{#MyAppName}\MosaicCensorSystem"; ValueType: string; ValueName: "StickerPath"; ValueData: "{app}\Stickers"; Flags: uninsdeletekey
 Root: HKLM64; Subkey: "SOFTWARE\{#MyAppName}\MosaicCensorSystem"; ValueType: string; ValueName: "CaptionPath"; ValueData: "{app}\Resources\OverlayText"; Flags: uninsdeletekey
+
+; 폴백용 경로들
+Root: HKLM64; Subkey: "SOFTWARE\{#MyAppName}\MosaicCensorSystem"; ValueType: string; ValueName: "ResourcesPath"; ValueData: "{app}\Resources"; Flags: uninsdeletekey
+Root: HKLM64; Subkey: "SOFTWARE\{#MyAppName}\MosaicCensorSystem"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
 
 [Icons]
 Name: "{autoprograms}\{#MyAppDisplayName}"; Filename: "{app}\{#MyAppExeName}"
@@ -64,15 +68,12 @@ Type: filesandordirs; Name: "{app}"
 Type: filesandordirs; Name: "{localappdata}\{#MyAppName}"
 
 [Code]
-// 설치 전 버전 체크 및 안내
 function InitializeSetup(): Boolean;
 var
   InstalledVersion: String;
-  ResultCode: Integer;
 begin
   Result := True;
   
-  // 기존 버전이 설치되어 있는지 확인
   if RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{E3744C9D-9903-4658-C975-874C96C69D3F}_is1', 
                           'DisplayVersion', InstalledVersion) then
   begin
@@ -85,7 +86,6 @@ begin
       Exit;
     end;
   end
-  // 일반 후원자 버전이 설치되어 있는지 확인
   else if RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{D2633B8C-8792-4547-B864-763B85B58A2F}_is1', 
                                'DisplayVersion', InstalledVersion) then
   begin
@@ -96,7 +96,6 @@ begin
   end;
 end;
 
-// 설치 완료 후 안내 메시지
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then

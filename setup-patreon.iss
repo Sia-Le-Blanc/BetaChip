@@ -1,8 +1,8 @@
 ; Inno Setup 스크립트 - BetaChip 후원자용 (v3.0.0 개정판)
 ; 레지스트리 기반 경로 관리로 안정성 극대화
 
-#define MyAppName "BetaChip" ; 레지스트리 키 공유를 위해 내부 이름은 통일
-#define MyAppDisplayName "BetaChip - 후원자용" ; 사용자에게 보여지는 이름
+#define MyAppName "BetaChip"
+#define MyAppDisplayName "BetaChip - 후원자용"
 #define MyAppVersion "3.0.0-Patreon"
 #define MyAppPublisher "Sia"
 #define MyAppURL "https://github.com/Sia-Le-Blanc/BetaChip"
@@ -44,9 +44,13 @@ Source: "{#MyBuildPath}\Resources\best.onnx"; DestDir: "{app}\Resources"; Flags:
 Source: "{#MyBuildPath}\Stickers\*"; DestDir: "{app}\Stickers"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Registry]
-; 모델과 스티커 폴더의 절대 경로를 레지스트리에 기록합니다.
+; 파일의 전체 경로를 저장
 Root: HKLM64; Subkey: "SOFTWARE\{#MyAppName}\MosaicCensorSystem"; ValueType: string; ValueName: "ModelPath"; ValueData: "{app}\Resources\best.onnx"; Flags: uninsdeletekey
 Root: HKLM64; Subkey: "SOFTWARE\{#MyAppName}\MosaicCensorSystem"; ValueType: string; ValueName: "StickerPath"; ValueData: "{app}\Stickers"; Flags: uninsdeletekey
+
+; 폴백용 경로들
+Root: HKLM64; Subkey: "SOFTWARE\{#MyAppName}\MosaicCensorSystem"; ValueType: string; ValueName: "ResourcesPath"; ValueData: "{app}\Resources"; Flags: uninsdeletekey
+Root: HKLM64; Subkey: "SOFTWARE\{#MyAppName}\MosaicCensorSystem"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
 
 [Icons]
 Name: "{autoprograms}\{#MyAppDisplayName}"; Filename: "{app}\{#MyAppExeName}"
@@ -59,3 +63,46 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
 Type: filesandordirs; Name: "{localappdata}\{#MyAppName}"
+
+[Code]
+function InitializeSetup(): Boolean;
+var
+  InstalledVersion: String;
+begin
+  Result := True;
+  
+  if RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{D2633B8C-8792-4547-B864-763B85B58A2F}_is1', 
+                          'DisplayVersion', InstalledVersion) then
+  begin
+    if MsgBox('기존 BetaChip 후원자 버전 (' + InstalledVersion + ')이 설치되어 있습니다.' + #13#10 +
+              '새 버전({#MyAppVersion})으로 업데이트하시겠습니까?' + #13#10#13#10 +
+              '※ 기존 설정은 유지됩니다.', 
+              mbConfirmation, MB_YESNO) = IDNO then
+    begin
+      Result := False;
+      Exit;
+    end;
+  end
+  else if RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{C2A62B8D-8792-4547-B864-763B85B58A2F}_is1', 
+                               'DisplayVersion', InstalledVersion) then
+  begin
+    MsgBox('기존 BetaChip 무료 버전이 설치되어 있습니다.' + #13#10 +
+           '후원자 버전으로 업그레이드합니다!' + #13#10#13#10 +
+           '추가 기능: 멀티 모니터 지원, 스티커', 
+           mbInformation, MB_OK);
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+  begin
+    MsgBox('BetaChip 후원자 버전 설치가 완료되었습니다!' + #13#10#13#10 +
+           '✨ 포함된 기능:' + #13#10 +
+           '  • 실시간 AI 검열' + #13#10 +
+           '  • 멀티 모니터 지원' + #13#10 +
+           '  • 스티커 기능' + #13#10#13#10 +
+           '💡 감사합니다!', 
+           mbInformation, MB_OK);
+  end;
+end;

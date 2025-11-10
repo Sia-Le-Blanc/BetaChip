@@ -35,7 +35,6 @@ namespace MosaicCensorSystem
 
         public MosaicProcessor Processor => processor;
         
-        // ★ EnableCaptions 추가
         private CensorSettings currentSettings = new(true, true, false, true, 15);
 
         private readonly List<Mat> squareStickers = new();
@@ -63,7 +62,6 @@ namespace MosaicCensorSystem
             overlayManager.Initialize(ui);
 
 #if PATREON_PLUS_VERSION
-            // ★ 후원자 버전 2에만 캡션 기능 추가
             overlayTextManager = new OverlayTextManager((msg) => ui.LogMessage(msg));
             ui.LogMessage("✨ 후원자 플러스 버전: 캡션 기능 활성화!");
 #endif
@@ -109,7 +107,7 @@ namespace MosaicCensorSystem
 
         private Mat ProcessFrame(Mat rawFrame)
         {
-            if (rawFrame == null || rawFrame.Empty())
+            if (rawFrame == null || rawFrame.IsDisposed || rawFrame.Empty())
             {
 #if PATREON_PLUS_VERSION
                 overlayTextManager?.Update(false);
@@ -117,66 +115,79 @@ namespace MosaicCensorSystem
                 return null;
             }
 
-            Mat processedFrame = rawFrame.Clone();
+            Mat processedFrame = null;
+            try
+            {
+                processedFrame = rawFrame.Clone();
 
-            if (!currentSettings.EnableDetection)
-            {
-#if PATREON_PLUS_VERSION
-                overlayTextManager?.Update(false);
-#endif
-                return processedFrame;
-            }
-
-            List<Detection.Detection> detections = processor.DetectObjects(rawFrame);
-            bool detectionActive = detections != null && detections.Count > 0;
-            
-#if PATREON_PLUS_VERSION
-            // ★ 캡션 활성화 여부 확인
-            if (currentSettings.EnableCaptions)
-            {
-                overlayTextManager?.Update(detectionActive);
-            }
-            else
-            {
-                overlayTextManager?.Update(false);
-            }
-#endif
-
-            foreach (var detection in detections)
-            {
-                if (currentSettings.EnableCensoring)
+                if (!currentSettings.EnableDetection)
                 {
-                    processor.ApplySingleCensorOptimized(processedFrame, detection);
+#if PATREON_PLUS_VERSION
+                    overlayTextManager?.Update(false);
+#endif
+                    return processedFrame;
                 }
 
-                if (currentSettings.EnableStickers && (squareStickers.Count > 0 || wideStickers.Count > 0))
+                List<Detection.Detection> detections = processor.DetectObjects(rawFrame);
+                bool detectionActive = detections != null && detections.Count > 0;
+                
+#if PATREON_PLUS_VERSION
+                if (currentSettings.EnableCaptions)
                 {
-                    if (!trackedStickers.TryGetValue(detection.TrackId, out var stickerInfo) || (DateTime.Now - stickerInfo.AssignedTime).TotalSeconds > 30)
+                    overlayTextManager?.Update(detectionActive);
+                }
+                else
+                {
+                    overlayTextManager?.Update(false);
+                }
+#endif
+
+                foreach (var detection in detections)
+                {
+                    if (currentSettings.EnableCensoring)
                     {
-                        var stickerList = (float)detection.Width / detection.Height > 1.2f ? wideStickers : squareStickers;
-                        if (stickerList.Count > 0)
+                        processor.ApplySingleCensorOptimized(processedFrame, detection);
+                    }
+
+                    if (currentSettings.EnableStickers && (squareStickers.Count > 0 || wideStickers.Count > 0))
+                    {
+                        if (!trackedStickers.TryGetValue(detection.TrackId, out var stickerInfo) || 
+                            (DateTime.Now - stickerInfo.AssignedTime).TotalSeconds > 30)
                         {
-                            stickerInfo = new StickerInfo { Sticker = stickerList[random.Next(stickerList.Count)], AssignedTime = DateTime.Now };
-                            trackedStickers[detection.TrackId] = stickerInfo;
+                            var stickerList = (float)detection.Width / detection.Height > 1.2f ? wideStickers : squareStickers;
+                            if (stickerList.Count > 0)
+                            {
+                                stickerInfo = new StickerInfo { 
+                                    Sticker = stickerList[random.Next(stickerList.Count)], 
+                                    AssignedTime = DateTime.Now 
+                                };
+                                trackedStickers[detection.TrackId] = stickerInfo;
+                            }
+                        }
+                        
+                        if (stickerInfo?.Sticker != null && !stickerInfo.Sticker.IsDisposed)
+                        {
+                            BlendStickerOnMosaic(processedFrame, detection, stickerInfo.Sticker);
                         }
                     }
-                    
-                    if (stickerInfo?.Sticker != null && !stickerInfo.Sticker.IsDisposed)
-                    {
-                        BlendStickerOnMosaic(processedFrame, detection, stickerInfo.Sticker);
-                    }
                 }
-            }
 
 #if PATREON_PLUS_VERSION
-            // ★ 캡션을 프레임에 그림 (활성화되어 있고 감지가 있을 때만)
-            if (detectionActive && currentSettings.EnableCaptions)
-            {
-                overlayTextManager?.DrawOverlayOnFrame(processedFrame);
-            }
+                if (detectionActive && currentSettings.EnableCaptions && 
+                    processedFrame != null && !processedFrame.IsDisposed)
+                {
+                    overlayTextManager?.DrawOverlayOnFrame(processedFrame);
+                }
 #endif
 
-            return processedFrame;
+                return processedFrame;
+            }
+            catch (Exception ex)
+            {
+                ui.LogMessage($"❌ ProcessFrame 오류: {ex.Message}");
+                processedFrame?.Dispose();
+                return null;
+            }
         }
 
         public void CaptureAndSave()
@@ -231,7 +242,7 @@ namespace MosaicCensorSystem
                     settingsChanged = true;
                     ui.LogMessage($"🎯 스티커 기능 {(currentSettings.EnableStickers ? "활성화" : "비활성화")}");
                     break;
-                case nameof(CensorSettings.EnableCaptions): // ★ 캡션 설정 추가
+                case nameof(CensorSettings.EnableCaptions):
                     currentSettings = currentSettings with { EnableCaptions = (bool)value };
                     settingsChanged = true;
                     ui.LogMessage($"💬 캡션 기능 {(currentSettings.EnableCaptions ? "활성화" : "비활성화")}");

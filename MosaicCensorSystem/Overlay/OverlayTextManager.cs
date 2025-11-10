@@ -135,13 +135,11 @@ namespace MosaicCensorSystem.Overlay
                 return;
             }
 
-            // ⭐ frame null 체크
             if (frame == null || frame.IsDisposed || frame.Empty())
             {
                 return;
             }
 
-            // ⭐ currentOverlay null 체크
             if (currentOverlay == null || currentOverlay.IsDisposed || currentOverlay.Empty())
             {
                 logCallback?.Invoke("⚠️ 유효하지 않은 오버레이");
@@ -153,7 +151,6 @@ namespace MosaicCensorSystem.Overlay
             {
                 resizedOverlay = ResizeOverlayToFit(currentOverlay, frame.Width, frame.Height);
                 
-                // ⭐ resizedOverlay null 체크 (nullable)
                 if (resizedOverlay == null || resizedOverlay.IsDisposed || resizedOverlay.Empty())
                 {
                     logCallback?.Invoke("⚠️ 오버레이 리사이징 실패");
@@ -176,7 +173,6 @@ namespace MosaicCensorSystem.Overlay
                     logCallback?.Invoke($"📍 오버레이 표시: 크기({overlayWidth}x{overlayHeight}), 위치({x}, {y})");
                 }
 
-                // ⭐ frame 재확인
                 if (!frame.IsDisposed && !frame.Empty())
                 {
                     BlendMatOnFrame(frame, resizedOverlay, currentPosition.X, currentPosition.Y);
@@ -188,7 +184,6 @@ namespace MosaicCensorSystem.Overlay
             }
             finally
             {
-                // ⭐ finally에서 안전하게 Dispose
                 if (resizedOverlay != null && !resizedOverlay.IsDisposed)
                 {
                     resizedOverlay.Dispose();
@@ -196,17 +191,11 @@ namespace MosaicCensorSystem.Overlay
             }
         }
 
-        /// <summary>
-        /// 오버레이 이미지를 화면 크기에 맞게 리사이징합니다.
-        /// </summary>
-        /// <returns>리사이징된 Mat 또는 실패 시 null</returns>
         private Mat? ResizeOverlayToFit(Mat original, int frameWidth, int frameHeight)
         {
-            // ⭐ null 체크
             if (original == null || original.IsDisposed || original.Empty()) 
                 return null;
 
-            // ⭐ 유효성 검사
             if (frameWidth <= 0 || frameHeight <= 0)
                 return null;
 
@@ -245,10 +234,10 @@ namespace MosaicCensorSystem.Overlay
                 Mat resized = new Mat();
                 Cv2.Resize(original, resized, new OpenCvSharp.Size(newWidth, newHeight), interpolation: InterpolationFlags.Area);
 
-                // ⭐ 리사이징 실패 체크
-                if (resized.Empty())
+                // ★ 핵심 수정: 리사이징 실패 시 명시적으로 null 반환
+                if (resized == null || resized.IsDisposed || resized.Empty())
                 {
-                    resized.Dispose();
+                    resized?.Dispose();
                     return null;
                 }
 
@@ -265,7 +254,6 @@ namespace MosaicCensorSystem.Overlay
 
         private void BlendMatOnFrame(Mat frame, Mat overlay, int x, int y)
         {
-            // ⭐ 파라미터 null 체크
             if (frame == null || frame.IsDisposed || frame.Empty())
                 return;
                 
@@ -282,7 +270,6 @@ namespace MosaicCensorSystem.Overlay
 
                 using var frameRoi = new Mat(frame, new Rect(x, y, w, h));
                 
-                // ⭐ frameRoi 유효성 체크
                 if (frameRoi == null || frameRoi.IsDisposed || frameRoi.Empty())
                     return;
 
