@@ -29,7 +29,7 @@ namespace MosaicCensorSystem
             {
                 var displaySettings = DisplayCompatibility.Initialize();
 
-                bool compatEnabled = Utils.UserSettings.IsCompatibilityModeEnabled() || forceCompatMode;
+                bool compatEnabled = UserSettings.IsCompatibilityModeEnabled() || forceCompatMode;
                 if (compatEnabled)
                 {
                     Console.WriteLine("자동 호환성 모드가 활성화되었습니다. DPI 배율이 해제됩니다.");
@@ -104,7 +104,7 @@ namespace MosaicCensorSystem
                 MessageBoxIcon.Error);
         }
 
-        private static void LogError(string type, Exception ex)
+        private static void LogError(string type, Exception? ex)
         {
             try
             {
@@ -114,7 +114,11 @@ namespace MosaicCensorSystem
                     "error.log"
                 );
 
-                Directory.CreateDirectory(Path.GetDirectoryName(logPath));
+                string? logDir = Path.GetDirectoryName(logPath);
+                if (!string.IsNullOrEmpty(logDir))
+                {
+                    Directory.CreateDirectory(logDir);
+                }
 
                 string logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {type}: {ex?.ToString() ?? "No exception details"}\n\n";
                 File.AppendAllText(logPath, logEntry);
@@ -168,14 +172,18 @@ namespace MosaicCensorSystem
             string? registryPath = GetPathFromRegistry("ModelPath");
             if (!string.IsNullOrEmpty(registryPath))
             {
-                // 레지스트리 값이 파일 경로인지 폴더 경로인지 확인
-                if (File.Exists(registryPath))
+                // 레지스트리 값 정규화
+                registryPath = NormalizePath(registryPath);
+                
+                // 파일 경로인 경우
+                if (!string.IsNullOrEmpty(registryPath) && File.Exists(registryPath))
                 {
                     Console.WriteLine($"✅ 레지스트리에서 모델 발견: {registryPath}");
                     return registryPath;
                 }
 
-                if (Directory.Exists(registryPath))
+                // 폴더 경로인 경우
+                if (!string.IsNullOrEmpty(registryPath) && Directory.Exists(registryPath))
                 {
                     string modelInFolder = Path.Combine(registryPath, modelFileName);
                     if (File.Exists(modelInFolder))
@@ -188,27 +196,110 @@ namespace MosaicCensorSystem
                 Console.WriteLine($"⚠️ 레지스트리 경로가 유효하지 않음: {registryPath}");
             }
 
-            // 2. 실행 파일 기준 상대 경로
-            string localPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", modelFileName);
-            if (File.Exists(localPath))
+            // 2. 레지스트리 폴백 경로들 시도
+            string? resourcesPath = GetPathFromRegistry("ResourcesPath");
+            if (!string.IsNullOrEmpty(resourcesPath))
             {
-                Console.WriteLine($"✅ 로컬 경로에서 모델 발견: {localPath}");
-                return localPath;
+                resourcesPath = NormalizePath(resourcesPath);
+                if (!string.IsNullOrEmpty(resourcesPath))
+                {
+                    string modelInResources = Path.Combine(resourcesPath, modelFileName);
+                    if (File.Exists(modelInResources))
+                    {
+                        Console.WriteLine($"✅ 레지스트리 Resources 경로에서 모델 발견: {modelInResources}");
+                        return modelInResources;
+                    }
+                }
             }
 
-            // 3. 실행 폴더에 직접 있는 경우
-            string directPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, modelFileName);
-            if (File.Exists(directPath))
+            string? installPath = GetPathFromRegistry("InstallPath");
+            if (!string.IsNullOrEmpty(installPath))
             {
-                Console.WriteLine($"✅ 실행 폴더에서 모델 발견: {directPath}");
-                return directPath;
+                installPath = NormalizePath(installPath);
+                if (!string.IsNullOrEmpty(installPath))
+                {
+                    string modelInInstall = Path.Combine(installPath, "Resources", modelFileName);
+                    if (File.Exists(modelInInstall))
+                    {
+                        Console.WriteLine($"✅ 레지스트리 설치 경로에서 모델 발견: {modelInInstall}");
+                        return modelInInstall;
+                    }
+                }
             }
 
-            // 모든 가능한 경로 출력
-            Console.WriteLine("❌ 모델 파일을 찾을 수 없습니다. 시도한 경로:");
-            Console.WriteLine($"  - 레지스트리: {registryPath ?? "(없음)"}");
-            Console.WriteLine($"  - Resources 폴더: {localPath}");
-            Console.WriteLine($"  - 실행 폴더: {directPath}");
+            // 3. 실행 파일 기준 상대 경로 (개발 환경 및 수동 설치)
+            string? baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            if (!string.IsNullOrEmpty(baseDir))
+            {
+                // 3-1. Resources 폴더
+                string localPath = Path.Combine(baseDir, "Resources", modelFileName);
+                if (File.Exists(localPath))
+                {
+                    Console.WriteLine($"✅ 로컬 Resources 폴더에서 모델 발견: {localPath}");
+                    return localPath;
+                }
+
+                // 3-2. 실행 폴더에 직접
+                string directPath = Path.Combine(baseDir, modelFileName);
+                if (File.Exists(directPath))
+                {
+                    Console.WriteLine($"✅ 실행 폴더에서 모델 발견: {directPath}");
+                    return directPath;
+                }
+
+                // 3-3. 상위 폴더의 Resources (개발 환경)
+                string parentPath = Path.Combine(baseDir, "..", "Resources", modelFileName);
+                try
+                {
+                    parentPath = Path.GetFullPath(parentPath);
+                    if (File.Exists(parentPath))
+                    {
+                        Console.WriteLine($"✅ 상위 폴더에서 모델 발견: {parentPath}");
+                        return parentPath;
+                    }
+                }
+                catch { }
+            }
+
+            // 4. 사용자 문서 폴더 확인 (일부 사용자가 여기에 설치할 수 있음)
+            try
+            {
+                string documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                if (!string.IsNullOrEmpty(documentsPath))
+                {
+                    string docModel = Path.Combine(documentsPath, "BetaChip", "Resources", modelFileName);
+                    if (File.Exists(docModel))
+                    {
+                        Console.WriteLine($"✅ 문서 폴더에서 모델 발견: {docModel}");
+                        return docModel;
+                    }
+                }
+            }
+            catch { }
+
+            // 5. AppData 로컬 확인
+            try
+            {
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                if (!string.IsNullOrEmpty(localAppData))
+                {
+                    string appDataModel = Path.Combine(localAppData, "BetaChip", "Resources", modelFileName);
+                    if (File.Exists(appDataModel))
+                    {
+                        Console.WriteLine($"✅ AppData에서 모델 발견: {appDataModel}");
+                        return appDataModel;
+                    }
+                }
+            }
+            catch { }
+
+            // 모든 시도 실패 - 상세 로그 출력
+            Console.WriteLine("❌ 모델 파일을 찾을 수 없습니다. 시도한 모든 경로:");
+            Console.WriteLine($"  1. 레지스트리 ModelPath: {registryPath ?? "(없음)"}");
+            Console.WriteLine($"  2. 레지스트리 ResourcesPath: {resourcesPath ?? "(없음)"}");
+            Console.WriteLine($"  3. 레지스트리 InstallPath: {installPath ?? "(없음)"}");
+            Console.WriteLine($"  4. 실행 폴더 Resources: {(baseDir != null ? Path.Combine(baseDir, "Resources", modelFileName) : "(baseDir null)")}");
+            Console.WriteLine($"  5. 실행 폴더 직접: {(baseDir != null ? Path.Combine(baseDir, modelFileName) : "(baseDir null)")}");
             
             return null;
         }
@@ -217,50 +308,75 @@ namespace MosaicCensorSystem
         {
             const string registryKeyPath = @"SOFTWARE\BetaChip\MosaicCensorSystem";
 
+            // 64비트와 32비트 레지스트리 모두 확인
             RegistryView[] viewsToProbe = { RegistryView.Registry64, RegistryView.Registry32 };
 
             foreach (RegistryView view in viewsToProbe)
             {
                 try
                 {
-                    using RegistryKey baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
-                    using RegistryKey? key = baseKey.OpenSubKey(registryKeyPath);
+                    using RegistryKey? baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+                    using RegistryKey? key = baseKey?.OpenSubKey(registryKeyPath);
 
-                    if (key?.GetValue(valueName) is string rawPath && !string.IsNullOrWhiteSpace(rawPath))
+                    if (key == null) continue;
+
+                    object? value = key.GetValue(valueName);
+                    if (value is string rawPath && !string.IsNullOrWhiteSpace(rawPath))
                     {
-                        string normalized = NormalizePath(rawPath);
-                        if (!string.IsNullOrEmpty(normalized))
-                        {
-                            Console.WriteLine($"✅ 레지스트리에서 경로 발견: {normalized}");
-                            return normalized;
-                        }
+                        return rawPath; // 정규화는 호출하는 쪽에서
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ 레지스트리 읽기 실패 ({view}): {ex.Message}");
+                    Console.WriteLine($"⚠️ 레지스트리 읽기 실패 ({view}, {valueName}): {ex.Message}");
                 }
             }
 
             return null;
         }
 
-        private static string NormalizePath(string rawPath)
+        private static string NormalizePath(string? rawPath)
         {
-            string candidate = rawPath.Trim();
-
-            if (candidate.Length == 0)
+            if (string.IsNullOrWhiteSpace(rawPath))
                 return string.Empty;
 
-            if (candidate.StartsWith('"') && candidate.EndsWith('"') && candidate.Length >= 2)
-                candidate = candidate[1..^1];
+            try
+            {
+                // 1. 앞뒤 공백 제거
+                string candidate = rawPath.Trim();
 
-            candidate = Environment.ExpandEnvironmentVariables(candidate);
+                // 2. 따옴표 제거
+                if (candidate.StartsWith('"') && candidate.EndsWith('"') && candidate.Length >= 2)
+                    candidate = candidate.Substring(1, candidate.Length - 2);
 
-            if (File.Exists(candidate) || Directory.Exists(candidate))
-                return candidate;
+                // 3. 환경 변수 확장
+                string expanded = Environment.ExpandEnvironmentVariables(candidate);
+                
+                // 4. 상대 경로를 절대 경로로 변환 시도
+                if (!Path.IsPathRooted(expanded))
+                {
+                    string? baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                    if (!string.IsNullOrEmpty(baseDir))
+                    {
+                        expanded = Path.Combine(baseDir, expanded);
+                    }
+                }
 
-            return string.Empty;
+                // 5. 경로 정규화
+                expanded = Path.GetFullPath(expanded);
+
+                // 6. 경로가 실제로 존재하는지 확인
+                if (File.Exists(expanded) || Directory.Exists(expanded))
+                    return expanded;
+
+                Console.WriteLine($"⚠️ 정규화된 경로가 존재하지 않음: {expanded}");
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ 경로 정규화 실패: {rawPath} - {ex.Message}");
+                return string.Empty;
+            }
         }
     }
 }
