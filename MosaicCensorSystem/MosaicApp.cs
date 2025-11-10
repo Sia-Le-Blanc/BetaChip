@@ -14,23 +14,24 @@ namespace MosaicCensorSystem
 
         public MosaicApp()
         {
-            Root = new Form 
-            { 
-                Text = "Mosaic Censor System", 
-                Size = new Size(500, 850),  // ★ 높이 증가 (캡션 체크박스 추가로)
-                MinimumSize = new Size(480, 700), 
-                StartPosition = FormStartPosition.CenterScreen 
-            };
-            
-            Root.FormClosing += (s, e) => 
+            Root = new Form
             {
-                censorService.Stop(); 
-                censorService.Dispose();
-                uiController.Dispose();
+                Text = "Mosaic Censor System",
+                Size = new Size(500, 850),  // ★ 높이 증가 (캡션 체크박스 추가로)
+                MinimumSize = new Size(480, 700),
+                StartPosition = FormStartPosition.CenterScreen
             };
 
             uiController = new GuiController(Root);
             censorService = new CensorService(uiController);
+
+            Root.FormClosing += (s, e) =>
+            {
+                censorService.Stop();
+                censorService.Dispose();
+                uiController.Dispose();
+            };
+
             ConnectEvents();
             uiController.LogMessage("✅ 시스템 초기화 완료. 시작 버튼을 누르세요.");
             uiController.UpdateGpuStatus(censorService.Processor.CurrentExecutionProvider);
