@@ -60,6 +60,7 @@ namespace MosaicCensorSystem
             ui.LogMessage("🖥️ 무료 버전: 단일 모니터 관리자 활성화");
 #endif
             overlayManager.Initialize(ui);
+            overlayManager.UpdateSettings(currentSettings);
 
 #if PATREON_PLUS_VERSION
             overlayTextManager = new OverlayTextManager((msg) => ui.LogMessage(msg));
