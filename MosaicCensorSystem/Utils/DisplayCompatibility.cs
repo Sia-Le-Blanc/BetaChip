@@ -151,20 +151,29 @@ namespace MosaicCensorSystem.Utils
         /// </summary>
         private static bool HasCustomDpiSettings()
         {
+            RegistryKey? key = null;
             try
             {
-                using (var key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop"))
-                {
-                    var logPixels = key?.GetValue("LogPixels");
-                    var win8DpiScaling = key?.GetValue("Win8DpiScaling");
-                    
-                    if (logPixels != null || win8DpiScaling != null)
-                        return true;
-                }
+                key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop");
+                if (key == null) return false;
+                
+                var logPixels = key.GetValue("LogPixels");
+                var win8DpiScaling = key.GetValue("Win8DpiScaling");
+                
+                return logPixels != null || win8DpiScaling != null;
             }
-            catch { }
-            
-            return false;
+            catch 
+            { 
+                return false; 
+            }
+            finally
+            {
+                try
+                {
+                    key?.Close();
+                }
+                catch { }
+            }
         }
 
         /// <summary>

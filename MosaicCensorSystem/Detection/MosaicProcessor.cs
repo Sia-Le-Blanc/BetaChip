@@ -28,8 +28,8 @@ namespace MosaicCensorSystem.Detection
         private readonly float[] inputBuffer = new float[1 * 3 * 640 * 640];
         private readonly SortTracker tracker = new SortTracker();
 
-        private readonly Mat _resizedMat = new Mat();
-        private readonly Mat _paddedMat = new Mat();
+        private Mat _resizedMat = new Mat();
+        private Mat _paddedMat = new Mat();
         private Mat[] _channels = new Mat[3];
 
         public float ConfThreshold { get; set; } = 0.3f;
@@ -277,18 +277,20 @@ namespace MosaicCensorSystem.Detection
             model = null;
 
             _resizedMat?.Dispose();
+            _resizedMat = null;
+            
             _paddedMat?.Dispose();
+            _paddedMat = null;
+            
             if (_channels != null)
             {
                 foreach (var c in _channels)
                 {
                     c?.Dispose();
                 }
+                _channels = null;
             }
 
-            // ★★★ 수정된 부분 ★★★
-            // 네이티브 리소스를 사용하는 ONNX 모델의 메모리를
-            // 확실하게 정리하도록 GC를 명시적으로 호출합니다.
             GC.Collect();
             GC.WaitForPendingFinalizers();
         }

@@ -220,12 +220,24 @@ namespace MosaicCensorSystem.Overlay
 
         private void SwapBitmap(Bitmap newBitmap)
         {
+            Bitmap oldBitmap = null;
+            
             lock (bitmapLock)
             {
-                var oldBitmap = currentBitmap;
+                oldBitmap = currentBitmap;
                 currentBitmap = newBitmap;
+            }
+            
+            // lock 밖에서 Dispose (Dispose가 오래 걸릴 수 있으므로)
+            try
+            {
                 oldBitmap?.Dispose();
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Overlay] 이전 비트맵 Dispose 실패: {ex.Message}");
+            }
+            
             this.Invalidate();
         }
 
@@ -268,34 +280,38 @@ namespace MosaicCensorSystem.Overlay
         {
             base.OnPaint(e);
 
+            Bitmap bitmapToPaint = null;
+            
             lock (bitmapLock)
             {
-                // 배경을 투명색으로 채우기
-                using (SolidBrush brush = new SolidBrush(this.TransparencyKey))
-                {
-                    e.Graphics.FillRectangle(brush, this.ClientRectangle);
-                }
+                bitmapToPaint = currentBitmap;
+            }
 
-                // 비트맵 그리기
-                if (currentBitmap != null && !currentBitmap.Size.IsEmpty)
+            // 배경을 투명색으로 채우기
+            using (SolidBrush brush = new SolidBrush(this.TransparencyKey))
+            {
+                e.Graphics.FillRectangle(brush, this.ClientRectangle);
+            }
+
+            // 비트맵 그리기
+            if (bitmapToPaint != null && !bitmapToPaint.Size.IsEmpty)
+            {
+                try
                 {
-                    try
+                    // 호환성 모드에서는 스트레치 그리기
+                    if (isCompatibilityMode)
                     {
-                        // 호환성 모드에서는 스트레치 그리기
-                        if (isCompatibilityMode)
-                        {
-                            e.Graphics.DrawImage(currentBitmap, this.ClientRectangle);
-                        }
-                        else
-                        {
-                            // 명시적으로 DrawingPoint.Empty 사용
-                            e.Graphics.DrawImage(currentBitmap, DrawingPoint.Empty);
-                        }
+                        e.Graphics.DrawImage(bitmapToPaint, this.ClientRectangle);
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        Console.WriteLine($"[Overlay] 그리기 실패: {ex.Message}");
+                        // 명시적으로 DrawingPoint.Empty 사용
+                        e.Graphics.DrawImage(bitmapToPaint, DrawingPoint.Empty);
                     }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Overlay] 그리기 실패: {ex.Message}");
                 }
             }
         }
@@ -337,7 +353,11 @@ namespace MosaicCensorSystem.Overlay
             {
                 lock (bitmapLock)
                 {
-                    currentBitmap?.Dispose();
+                    try
+                    {
+                        currentBitmap?.Dispose();
+                    }
+                    catch { }
                     currentBitmap = null;
                 }
             }

@@ -16,8 +16,10 @@ namespace MosaicCensorSystem.Management
         private readonly FullscreenOverlay overlay;
         private Thread processThread;
         private volatile bool isRunning = false;
-        private CensorSettings settings = new(true, true, false, false, 15); // ★ 기본값으로 초기화
+        private CensorSettings settings = new(true, true, false, false, 15);
         private Func<Mat, Mat> processFrame;
+        private readonly object disposeLock = new object();
+        private bool isDisposed = false;
 
         public SingleMonitorManager(ScreenCapture screenCapturer)
         {
@@ -32,20 +34,41 @@ namespace MosaicCensorSystem.Management
 
         public void Start(Func<Mat, Mat> frameProcessor)
         {
-            if (isRunning) return;
-            isRunning = true;
-            processFrame = frameProcessor;
-            overlay.Show();
-            processThread = new Thread(ProcessingLoop) { IsBackground = true, Name = "CensorProcessingThread" };
-            processThread.Start();
+            lock (disposeLock)
+            {
+                if (isRunning || isDisposed) return;
+                isRunning = true;
+                processFrame = frameProcessor;
+                
+                try
+                {
+                    overlay.Show();
+                    processThread = new Thread(ProcessingLoop) 
+                        { IsBackground = true, Name = "CensorProcessingThread" };
+                    processThread.Start();
+                }
+                catch (Exception ex)
+                {
+                    ui?.LogMessage($"🚨 시작 실패: {ex.Message}");
+                    isRunning = false;
+                }
+            }
         }
 
         public void Stop()
         {
-            if (!isRunning) return;
-            isRunning = false;
-            processThread?.Join(1000);
-            overlay.Hide();
+            lock (disposeLock)
+            {
+                if (!isRunning) return;
+                isRunning = false;
+                
+                if (processThread != null && processThread.IsAlive)
+                {
+                    processThread.Join(1000);
+                }
+                
+                try { overlay?.Hide(); } catch { }
+            }
         }
 
         public void UpdateSettings(CensorSettings newSettings)
@@ -55,37 +78,75 @@ namespace MosaicCensorSystem.Management
 
         private void ProcessingLoop()
         {
-            while (isRunning)
+            while (isRunning && !isDisposed)
             {
                 try
                 {
+                    if (capturer == null || overlay == null)
+                    {
+                        ui?.LogMessage("⚠️ 캡처 또는 오버레이가 유효하지 않음 - 루프 종료");
+                        break;
+                    }
+
                     var frameStart = DateTime.Now;
 
-                    using Mat rawFrame = capturer.GetFrame();
-                    using Mat processedFrame = processFrame(rawFrame);
+                    Mat? rawFrame = null;
+                    Mat? processedFrame = null;
 
-                    if (processedFrame != null)
+                    try
                     {
-                        overlay.UpdateFrame(processedFrame);
+                        rawFrame = capturer.GetFrame();
+
+                        if (rawFrame != null && !rawFrame.IsDisposed && !rawFrame.Empty())
+                        {
+                            if (processFrame != null)
+                            {
+                                processedFrame = processFrame(rawFrame);
+
+                                if (processedFrame != null && !processedFrame.IsDisposed)
+                                {
+                                    overlay.UpdateFrame(processedFrame);
+                                }
+                            }
+                        }
                     }
+                    finally
+                    {
+                        rawFrame?.Dispose();
+                        processedFrame?.Dispose();
+                    }
+
+                    if (!isRunning || isDisposed) break;
 
                     var elapsedMs = (DateTime.Now - frameStart).TotalMilliseconds;
                     int delay = (1000 / settings.TargetFPS) - (int)elapsedMs;
                     if (delay > 0) Thread.Sleep(delay);
                 }
+                catch (ObjectDisposedException)
+                {
+                    break;
+                }
                 catch (Exception ex)
                 {
                     ui?.LogMessage($"🚨 치명적 오류 발생 (백그라운드 스레드): {ex.Message}");
-                    MessageBox.Show($"백그라운드 처리 중 심각한 오류가 발생했습니다. 프로그램을 중지합니다.\n\n오류: {ex.ToString()}", "치명적 오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    isRunning = false;
+                    if (!isRunning || isDisposed) break;
+                    Thread.Sleep(100);
                 }
             }
         }
 
         public void Dispose()
         {
-            Stop();
-            overlay?.Dispose();
+            lock (disposeLock)
+            {
+                if (isDisposed) return;
+                isDisposed = true;
+                
+                Stop();
+                
+                try { capturer?.Dispose(); } catch { }
+                try { overlay?.Dispose(); } catch { }
+            }
         }
     }
 }

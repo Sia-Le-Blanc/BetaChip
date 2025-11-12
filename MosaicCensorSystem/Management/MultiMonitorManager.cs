@@ -10,11 +10,8 @@ using System.Threading;
 using System.Windows.Forms;
 using MosaicCensorSystem.Overlay;
 
-namespace MosaicCensorSystem.Management // 네임스페이스 변경
+namespace MosaicCensorSystem.Management
 {
-    /// <summary>
-    /// 후원자 버전을 위한 다중 모니터 오버레이 관리자
-    /// </summary>
     public class MultiMonitorManager : IOverlayManager
     {
         private class MonitorTask
@@ -23,11 +20,26 @@ namespace MosaicCensorSystem.Management // 네임스페이스 변경
             public FullscreenOverlay Overlay { get; }
             public Thread ProcessThread { get; set; }
             public bool IsEnabled { get; set; } = true;
+            private volatile bool isDisposed = false;
 
             public MonitorTask(Rectangle bounds)
             {
                 Capturer = new ScreenCapture(bounds);
                 Overlay = new FullscreenOverlay(bounds);
+            }
+
+            public bool IsValid()
+            {
+                return !isDisposed && Capturer != null && Overlay != null;
+            }
+
+            public void Dispose()
+            {
+                if (isDisposed) return;
+                isDisposed = true;
+                
+                try { Capturer?.Dispose(); } catch { }
+                try { Overlay?.Dispose(); } catch { }
             }
         }
         
@@ -36,12 +48,13 @@ namespace MosaicCensorSystem.Management // 네임스페이스 변경
         private volatile bool isRunning = false;
         private CensorSettings settings = new(true, true, false, true, 15);
         private Func<Mat, Mat> processFrame;
+        private readonly object disposeLock = new object();
+        private bool isDisposed = false;
 
         public IReadOnlyList<Screen> Monitors { get; }
 
         public MultiMonitorManager(ScreenCapture mainCapturerToDetectMonitors)
         {
-             // Screen.AllScreens를 사용하여 모든 모니터 정보를 가져옵니다.
             Monitors = Screen.AllScreens.ToList().AsReadOnly();
             foreach (var screen in Monitors)
             {
@@ -61,28 +74,50 @@ namespace MosaicCensorSystem.Management // 네임스페이스 변경
 
         public void Start(Func<Mat, Mat> frameProcessor)
         {
-            if (isRunning) return;
-            isRunning = true;
-            processFrame = frameProcessor;
-            
-            foreach (var task in monitorTasks.Where(t => t.IsEnabled))
+            lock (disposeLock)
             {
-                task.Overlay.Show();
-                task.ProcessThread = new Thread(() => ProcessingLoop(task)) 
-                    { IsBackground = true, Name = $"Monitor_{monitorTasks.IndexOf(task)}_Thread" };
-                task.ProcessThread.Start();
+                if (isRunning || isDisposed) return;
+                isRunning = true;
+                processFrame = frameProcessor;
+                
+                foreach (var task in monitorTasks.Where(t => t.IsEnabled))
+                {
+                    if (!task.IsValid()) continue;
+                    
+                    try
+                    {
+                        task.Overlay.Show();
+                        task.ProcessThread = new Thread(() => ProcessingLoop(task)) 
+                            { IsBackground = true, Name = $"Monitor_{monitorTasks.IndexOf(task)}_Thread" };
+                        task.ProcessThread.Start();
+                    }
+                    catch (Exception ex)
+                    {
+                        ui?.LogMessage($"🚨 모니터 {monitorTasks.IndexOf(task)} 시작 실패: {ex.Message}");
+                    }
+                }
             }
         }
 
         public void Stop()
         {
-            if (!isRunning) return;
-            isRunning = false;
-            
-            foreach (var task in monitorTasks)
+            lock (disposeLock)
             {
-                task.ProcessThread?.Join(500);
-                task.Overlay.Hide();
+                if (!isRunning) return;
+                isRunning = false;
+                
+                foreach (var task in monitorTasks)
+                {
+                    if (task.ProcessThread != null && task.ProcessThread.IsAlive)
+                    {
+                        task.ProcessThread.Join(1000);
+                    }
+                    
+                    if (task.IsValid())
+                    {
+                        try { task.Overlay.Hide(); } catch { }
+                    }
+                }
             }
         }
         
@@ -90,10 +125,7 @@ namespace MosaicCensorSystem.Management // 네임스페이스 변경
         {
             if (index < 0 || index >= monitorTasks.Count) return;
             monitorTasks[index].IsEnabled = enabled;
-            
-            // 이미 실행 중이라면 해당 모니터의 스레드를 즉시 중지/시작할 수도 있습니다.
-            // (여기서는 단순화를 위해 다음 Start/Stop 시에만 적용)
-            ui.LogMessage($"모니터 {index + 1} {(enabled ? "활성화" : "비활성화")}");
+            ui?.LogMessage($"모니터 {index + 1} {(enabled ? "활성화" : "비활성화")}");
         }
 
         public void UpdateSettings(CensorSettings newSettings)
@@ -103,34 +135,86 @@ namespace MosaicCensorSystem.Management // 네임스페이스 변경
 
         private void ProcessingLoop(MonitorTask task)
         {
-            while (isRunning && task.IsEnabled)
+            if (task == null) return;
+
+            while (isRunning && task.IsEnabled && !isDisposed)
             {
-                var frameStart = DateTime.Now;
-
-                using Mat rawFrame = task.Capturer.GetFrame();
-                using Mat processedFrame = processFrame(rawFrame);
-
-                if (processedFrame != null)
+                try
                 {
-                    task.Overlay.UpdateFrame(processedFrame);
-                }
+                    if (!task.IsValid())
+                    {
+                        ui?.LogMessage("⚠️ 모니터 작업이 유효하지 않음 - 루프 종료");
+                        break;
+                    }
 
-                var elapsedMs = (DateTime.Now - frameStart).TotalMilliseconds;
-                int targetFps = Math.Max(1, settings?.TargetFPS ?? 15);
-                int delay = (1000 / targetFps) - (int)elapsedMs;
-                if (delay > 0) Thread.Sleep(delay);
+                    var frameStart = DateTime.Now;
+
+                    Mat? rawFrame = null;
+                    Mat? processedFrame = null;
+
+                    try
+                    {
+                        rawFrame = task.Capturer?.GetFrame();
+                        
+                        if (rawFrame != null && !rawFrame.IsDisposed && !rawFrame.Empty())
+                        {
+                            if (processFrame != null)
+                            {
+                                processedFrame = processFrame(rawFrame);
+
+                                if (processedFrame != null && !processedFrame.IsDisposed && task.IsValid())
+                                {
+                                    task.Overlay?.UpdateFrame(processedFrame);
+                                }
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        rawFrame?.Dispose();
+                        processedFrame?.Dispose();
+                    }
+
+                    if (!isRunning || isDisposed) break;
+
+                    var elapsedMs = (DateTime.Now - frameStart).TotalMilliseconds;
+                    int targetFps = Math.Max(1, settings?.TargetFPS ?? 15);
+                    int delay = (1000 / targetFps) - (int)elapsedMs;
+                    if (delay > 0) Thread.Sleep(delay);
+                }
+                catch (ObjectDisposedException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    ui?.LogMessage($"🚨 모니터 처리 루프 오류: {ex.Message}");
+                    if (!isRunning || isDisposed) break;
+                    Thread.Sleep(100);
+                }
             }
-            // 루프가 끝나면 오버레이를 숨겨줍니다.
-            task.Overlay.Hide();
+
+            if (task.IsValid())
+            {
+                try { task.Overlay?.Hide(); } catch { }
+            }
         }
 
         public void Dispose()
         {
-            Stop();
-            foreach (var task in monitorTasks)
+            lock (disposeLock)
             {
-                task.Capturer?.Dispose();
-                task.Overlay?.Dispose();
+                if (isDisposed) return;
+                isDisposed = true;
+                
+                Stop();
+
+                foreach (var task in monitorTasks)
+                {
+                    task?.Dispose();
+                }
+                
+                monitorTasks.Clear();
             }
         }
     }

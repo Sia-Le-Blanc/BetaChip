@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -40,6 +41,8 @@ namespace MosaicCensorSystem
         private readonly List<Mat> squareStickers = new();
         private readonly List<Mat> wideStickers = new();
         private readonly Dictionary<int, StickerInfo> trackedStickers = new();
+        private const int STICKER_CLEANUP_INTERVAL_SECONDS = 30;
+        private DateTime lastStickerCleanup = DateTime.Now;
 
         private static readonly string SCREENSHOTS_FOLDER = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "BetaChip Screenshots");
         private static readonly string DESKTOP_SHORTCUT = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "BetaChip 스크린샷.lnk");
@@ -173,6 +176,13 @@ namespace MosaicCensorSystem
                     }
                 }
 
+                // 주기적으로 오래된 스티커 추적 정리
+                if ((DateTime.Now - lastStickerCleanup).TotalSeconds > STICKER_CLEANUP_INTERVAL_SECONDS)
+                {
+                    CleanupExpiredStickerTracking();
+                    lastStickerCleanup = DateTime.Now;
+                }
+
 #if PATREON_PLUS_VERSION
                 if (detectionActive && currentSettings.EnableCaptions && 
                     processedFrame != null && !processedFrame.IsDisposed)
@@ -188,6 +198,31 @@ namespace MosaicCensorSystem
                 ui.LogMessage($"❌ ProcessFrame 오류: {ex.Message}");
                 processedFrame?.Dispose();
                 return null;
+            }
+        }
+
+        private void CleanupExpiredStickerTracking()
+        {
+            try
+            {
+                var expiredIds = trackedStickers
+                    .Where(kvp => (DateTime.Now - kvp.Value.AssignedTime).TotalSeconds > 30)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+
+                foreach (var id in expiredIds)
+                {
+                    trackedStickers.Remove(id);
+                }
+
+                if (expiredIds.Count > 0)
+                {
+                    ui.LogMessage($"🧹 {expiredIds.Count}개의 오래된 스티커 추적 정리됨");
+                }
+            }
+            catch (Exception ex)
+            {
+                ui.LogMessage($"⚠️ 스티커 추적 정리 중 오류: {ex.Message}");
             }
         }
 

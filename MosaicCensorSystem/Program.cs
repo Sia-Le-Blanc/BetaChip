@@ -313,22 +313,34 @@ namespace MosaicCensorSystem
 
             foreach (RegistryView view in viewsToProbe)
             {
+                RegistryKey? baseKey = null;
+                RegistryKey? key = null;
+                
                 try
                 {
-                    using RegistryKey? baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
-                    using RegistryKey? key = baseKey?.OpenSubKey(registryKeyPath);
+                    baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+                    key = baseKey?.OpenSubKey(registryKeyPath);
 
                     if (key == null) continue;
 
                     object? value = key.GetValue(valueName);
                     if (value is string rawPath && !string.IsNullOrWhiteSpace(rawPath))
                     {
-                        return rawPath; // 정규화는 호출하는 쪽에서
+                        return rawPath;
                     }
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"⚠️ 레지스트리 읽기 실패 ({view}, {valueName}): {ex.Message}");
+                }
+                finally
+                {
+                    try
+                    {
+                        key?.Close();
+                        baseKey?.Close();
+                    }
+                    catch { }
                 }
             }
 

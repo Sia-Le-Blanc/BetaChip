@@ -56,16 +56,23 @@ namespace MosaicCensorSystem.Overlay
                 int loadedCount = 0;
                 foreach (var file in files)
                 {
-                    using var img = Cv2.ImRead(file, ImreadModes.Unchanged);
-                    if (!img.Empty())
+                    try
                     {
-                        overlayImages.Add(img.Clone());
-                        loadedCount++;
-                        logCallback?.Invoke($"✅ 이미지 로드 성공: {Path.GetFileName(file)} (원본: {img.Width}x{img.Height})");
+                        using var img = Cv2.ImRead(file, ImreadModes.Unchanged);
+                        if (!img.Empty())
+                        {
+                            overlayImages.Add(img.Clone());
+                            loadedCount++;
+                            logCallback?.Invoke($"✅ 이미지 로드 성공: {Path.GetFileName(file)} (원본: {img.Width}x{img.Height})");
+                        }
+                        else
+                        {
+                            logCallback?.Invoke($"⚠️ 이미지 로드 실패: {file}");
+                        }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        logCallback?.Invoke($"⚠️ 이미지 로드 실패: {file}");
+                        logCallback?.Invoke($"⚠️ 이미지 파일 처리 중 오류 ({Path.GetFileName(file)}): {ex.Message}");
                     }
                 }
 
@@ -106,7 +113,14 @@ namespace MosaicCensorSystem.Overlay
         {
             if (currentOverlay != null && !currentOverlay.IsDisposed)
             {
-                currentOverlay.Dispose();
+                try
+                {
+                    currentOverlay.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    logCallback?.Invoke($"⚠️ 오버레이 Dispose 중 오류: {ex.Message}");
+                }
             }
             currentOverlay = null;
             positionSet = false;
@@ -118,14 +132,29 @@ namespace MosaicCensorSystem.Overlay
 
             if (overlayImages.Count == 0) return;
 
-            int index = random.Next(overlayImages.Count);
-            currentOverlay = overlayImages[index].Clone();
+            try
+            {
+                int index = random.Next(overlayImages.Count);
+                Mat sourceOverlay = overlayImages[index];
+                
+                if (sourceOverlay != null && !sourceOverlay.IsDisposed && !sourceOverlay.Empty())
+                {
+                    currentOverlay = sourceOverlay.Clone();
+                    currentInterval = MIN_INTERVAL_SECONDS + random.NextDouble() * (MAX_INTERVAL_SECONDS - MIN_INTERVAL_SECONDS);
+                    lastChangeTime = DateTime.Now;
+                    positionSet = false;
 
-            currentInterval = MIN_INTERVAL_SECONDS + random.NextDouble() * (MAX_INTERVAL_SECONDS - MIN_INTERVAL_SECONDS);
-            lastChangeTime = DateTime.Now;
-            positionSet = false;
-
-            logCallback?.Invoke($"🎨 새 오버레이 선택됨 (다음 변경: {currentInterval:F1}초 후)");
+                    logCallback?.Invoke($"🎨 새 오버레이 선택됨 (다음 변경: {currentInterval:F1}초 후)");
+                }
+                else
+                {
+                    logCallback?.Invoke($"⚠️ 선택된 오버레이가 유효하지 않음");
+                }
+            }
+            catch (Exception ex)
+            {
+                logCallback?.Invoke($"❌ 오버레이 변경 중 오류: {ex.Message}");
+            }
         }
 
         public void DrawOverlayOnFrame(Mat frame)
@@ -142,7 +171,6 @@ namespace MosaicCensorSystem.Overlay
 
             if (currentOverlay == null || currentOverlay.IsDisposed || currentOverlay.Empty())
             {
-                logCallback?.Invoke("⚠️ 유효하지 않은 오버레이");
                 return;
             }
 
@@ -153,7 +181,6 @@ namespace MosaicCensorSystem.Overlay
                 
                 if (resizedOverlay == null || resizedOverlay.IsDisposed || resizedOverlay.Empty())
                 {
-                    logCallback?.Invoke("⚠️ 오버레이 리사이징 실패");
                     return;
                 }
 
@@ -186,7 +213,11 @@ namespace MosaicCensorSystem.Overlay
             {
                 if (resizedOverlay != null && !resizedOverlay.IsDisposed)
                 {
-                    resizedOverlay.Dispose();
+                    try
+                    {
+                        resizedOverlay.Dispose();
+                    }
+                    catch { }
                 }
             }
         }
@@ -223,26 +254,28 @@ namespace MosaicCensorSystem.Overlay
                 float scaleHeight = (float)maxHeight / origHeight;
                 float scale = Math.Min(scaleWidth, scaleHeight);
 
-                int newWidth = (int)(origWidth * scale);
-                int newHeight = (int)(origHeight * scale);
-
-                // 최소 크기 보장
-                newWidth = Math.Max(150, newWidth);
-                newHeight = Math.Max(80, newHeight);
+                int newWidth = Math.Max(150, (int)(origWidth * scale));
+                int newHeight = Math.Max(80, (int)(origHeight * scale));
 
                 // 리사이징
                 Mat resized = new Mat();
-                Cv2.Resize(original, resized, new OpenCvSharp.Size(newWidth, newHeight), interpolation: InterpolationFlags.Area);
+                Cv2.Resize(original, resized, new OpenCvSharp.Size(newWidth, newHeight), 
+                          interpolation: InterpolationFlags.Area);
 
-                // ★ 핵심 수정: 리사이징 실패 시 명시적으로 null 반환
+                // 리사이징 실패 시 명시적으로 null 반환
                 if (resized == null || resized.IsDisposed || resized.Empty())
                 {
-                    resized?.Dispose();
+                    try
+                    {
+                        resized?.Dispose();
+                    }
+                    catch { }
+                    
+                    logCallback?.Invoke("❌ 리사이징 결과가 비어있음");
                     return null;
                 }
 
                 logCallback?.Invoke($"🔧 오버레이 리사이징: {origWidth}x{origHeight} → {newWidth}x{newHeight}");
-
                 return resized;
             }
             catch (Exception ex)
@@ -275,10 +308,12 @@ namespace MosaicCensorSystem.Overlay
 
                 if (overlay.Channels() == 4)
                 {
-                    Mat[] channels = Cv2.Split(overlay);
+                    Mat[]? channels = null;
                     try
                     {
+                        channels = Cv2.Split(overlay);
                         var alpha = channels[3];
+                        
                         if (alpha == null || alpha.IsDisposed) return;
 
                         if (frameRoi.Channels() == 4)
@@ -297,11 +332,18 @@ namespace MosaicCensorSystem.Overlay
                     }
                     finally
                     {
-                        foreach (var c in channels)
+                        if (channels != null)
                         {
-                            if (c != null && !c.IsDisposed)
+                            foreach (var c in channels)
                             {
-                                c.Dispose();
+                                if (c != null && !c.IsDisposed)
+                                {
+                                    try
+                                    {
+                                        c.Dispose();
+                                    }
+                                    catch { }
+                                }
                             }
                         }
                     }
@@ -336,7 +378,11 @@ namespace MosaicCensorSystem.Overlay
             {
                 if (img != null && !img.IsDisposed)
                 {
-                    img.Dispose();
+                    try
+                    {
+                        img.Dispose();
+                    }
+                    catch { }
                 }
             }
             overlayImages.Clear();
