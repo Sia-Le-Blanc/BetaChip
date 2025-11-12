@@ -1,8 +1,8 @@
-; Inno Setup 스크립트 - BetaChip 무료 버전 (v3.0.0 개정판)
+; Inno Setup 스크립트 - BetaChip 무료 버전 (v3.0.2 개정판)
 ; 레지스트리 기반 경로 관리로 안정성 극대화
 
 #define MyAppName "BetaChip"
-#define MyAppVersion "3.0.0"
+#define MyAppVersion "3.0.2"
 #define MyAppPublisher "Sia"
 #define MyAppURL "https://github.com/Sia-Le-Blanc/BetaChip"
 #define MyAppExeName "MosaicCensorSystem.exe"

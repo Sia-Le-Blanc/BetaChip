@@ -24,7 +24,9 @@ namespace MosaicCensorSystem.Management
         public SingleMonitorManager(ScreenCapture screenCapturer)
         {
             capturer = screenCapturer;
-            overlay = new FullscreenOverlay();
+            
+            // ★★★ 수정: 기본 생성자 대신 Screen.PrimaryScreen.Bounds를 전달
+            overlay = new FullscreenOverlay(Screen.PrimaryScreen.Bounds);
         }
 
         public void Initialize(GuiController uiController)

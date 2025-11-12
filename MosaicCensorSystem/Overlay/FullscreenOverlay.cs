@@ -53,9 +53,11 @@ namespace MosaicCensorSystem.Overlay
 
         public FullscreenOverlay()
         {
-            // 디스플레이 호환성 설정 가져오기
+            // DPI 호환성 설정 가져오기
             displaySettings = DisplayCompatibility.GetCurrentSettings();
-            isCompatibilityMode = displaySettings?.HasDpiIssues ?? false;
+            
+            // ★★★ 수정: UserSettings에서 명시적으로 활성화한 경우에만 호환 모드 사용
+            isCompatibilityMode = UserSettings.IsCompatibilityModeEnabled();
 
             // 기본 Form 설정
             this.FormBorderStyle = FormBorderStyle.None;
