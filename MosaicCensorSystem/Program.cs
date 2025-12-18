@@ -60,7 +60,25 @@ namespace MosaicCensorSystem
                 return;
             }
 
-            // 6. 메인 애플리케이션 실행
+            // 6. GPU 환경 감지 및 안내
+            try
+            {
+                var gpuResult = Helpers.GpuDetector.Detect();
+                
+                // GPU 문제가 있거나 CPU 모드인 경우 안내 표시
+                if (gpuResult.Recommended == Helpers.GpuDetector.RecommendedMode.CPU ||
+                    !string.IsNullOrEmpty(gpuResult.FailureReason))
+                {
+                    using var gpuForm = new UI.GpuSetupForm(gpuResult);
+                    gpuForm.ShowDialog();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"GPU 감지 중 오류: {ex.Message}");
+            }
+
+            // 7. 메인 애플리케이션 실행
             try
             {
                 var app = new MosaicApp();

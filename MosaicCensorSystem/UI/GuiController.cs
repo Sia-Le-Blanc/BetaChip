@@ -32,6 +32,7 @@ namespace MosaicCensorSystem.UI
         public event Action StopClicked;
         public event Action CaptureAndSaveClicked;
         public event Action<List<string>> TargetsChanged;
+        public event Action GpuSetupClicked;
 
         // 새 DPI 호환성 토글 이벤트
         public event Action<bool> DpiCompatToggled;
@@ -41,7 +42,7 @@ namespace MosaicCensorSystem.UI
         private ComboBox languageComboBox;
         private Label statusLabel;
         private TextBox logTextBox;
-        private Button startButton, stopButton, captureButton;
+        private Button startButton, stopButton, captureButton, gpuSetupButton;
         private GroupBox controlGroup, settingsGroup, logGroup, targetsGroup;
         private Label gpuStatusLabel;
         private Label fpsLabel, strengthLabel, confidenceLabel;
@@ -139,7 +140,7 @@ namespace MosaicCensorSystem.UI
             parent.Controls.Add(gpuStatusLabel);
             y += 30;
 
-            controlGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 80) };
+            controlGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 120) };
             startButton = new Button
             {
                 BackColor = Color.DarkGreen,
@@ -169,10 +170,20 @@ namespace MosaicCensorSystem.UI
             startButton.Click += (s, e) => StartClicked?.Invoke();
             stopButton.Click += (s, e) => StopClicked?.Invoke();
             captureButton.Click += (s, e) => CaptureAndSaveClicked?.Invoke();
+            gpuSetupButton = new Button
+            {
+                BackColor = Color.DarkSlateGray,
+                ForeColor = Color.White,
+                Font = new Font("Arial", 9, FontStyle.Bold),
+                Size = new Size(420, 30),
+                Location = new Point(20, 75),
+                Text = "🖥️ GPU 설정 확인"
+            };
+            gpuSetupButton.Click += (s, e) => GpuSetupClicked?.Invoke();
 
-            controlGroup.Controls.AddRange(new Control[] { startButton, stopButton, captureButton });
+            controlGroup.Controls.AddRange(new Control[] { startButton, stopButton, captureButton, gpuSetupButton });
             parent.Controls.Add(controlGroup);
-            y += 90;
+            y += 130;
 
             settingsGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 440) };
             CreateSettingsContent(settingsGroup);

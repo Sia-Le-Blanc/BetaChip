@@ -59,6 +59,12 @@ namespace MosaicCensorSystem
             uiController.StrengthChanged += (val) => censorService.UpdateSetting("Strength", val);
             uiController.ConfidenceChanged += (val) => censorService.UpdateSetting("Confidence", val);
             uiController.TargetsChanged += (targets) => censorService.UpdateSetting("Targets", targets);
+            uiController.GpuSetupClicked += () =>
+            {
+                var gpuResult = Helpers.GpuDetector.Detect();
+                using var gpuForm = new UI.GpuSetupForm(gpuResult);
+                gpuForm.ShowDialog();
+            };
         }
 
         public void Run()
