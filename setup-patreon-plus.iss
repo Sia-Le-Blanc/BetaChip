@@ -1,9 +1,9 @@
-; Inno Setup 스크립트 - BetaChip 후원자 플러스용 (v4.0.0)
-; 레지스트리 기반 경로 관리 + 캡션 기능 포함
+; Inno Setup 스크립트 - BetaChip 후원자 플러스용 (v4.1.0)
+; GPU 가속 설정 가이드 기능 추가 + 캡션 기능
 
 #define MyAppName "BetaChip"
 #define MyAppDisplayName "BetaChip - 후원자 플러스용"
-#define MyAppVersion "3.0.0-PatreonPlus"
+#define MyAppVersion "4.0.0-PatreonPlus"
 #define MyAppPublisher "Sia"
 #define MyAppURL "https://github.com/Sia-Le-Blanc/BetaChip"
 #define MyAppExeName "MosaicCensorSystem.exe"
@@ -100,12 +100,16 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
-    MsgBox('BetaChip 후원자 플러스 버전 설치가 완료되었습니다!' + #13#10#13#10 +
+    MsgBox('BetaChip 후원자 플러스 버전 v4.0.0 설치가 완료되었습니다!' + #13#10#13#10 +
            '✨ 포함된 기능:' + #13#10 +
            '  • 실시간 AI 검열' + #13#10 +
            '  • 멀티 모니터 지원' + #13#10 +
            '  • 스티커 기능' + #13#10 +
-           '  • 캡션 기능 (NEW!)' + #13#10#13#10 +
+           '  • 캡션 기능' + #13#10#13#10 +
+           '🆕 v4.0.0 업데이트:' + #13#10 +
+           '  • GPU 설정 가이드 기능 추가' + #13#10 +
+           '  • CUDA/cuDNN 자동 감지 및 설치 안내' + #13#10 +
+           '  • cuDNN 자동 복사 기능' + #13#10#13#10 +
            '💡 캡션 기능은 UI에서 "캡션 활성화" 체크박스로 켜고 끌 수 있습니다.' + #13#10 +
            '   감지 시 3~8초마다 화면에 랜덤한 위치에 텍스트가 나타납니다.', 
            mbInformation, MB_OK);

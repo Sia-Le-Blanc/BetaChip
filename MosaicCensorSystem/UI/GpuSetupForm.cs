@@ -110,8 +110,6 @@ namespace MosaicCensorSystem.UI
                 y += 30;
             }
 
-            y += 20;
-
             // 최종 상태
             y = CreateFinalStatus(y);
 
@@ -520,7 +518,7 @@ namespace MosaicCensorSystem.UI
             }
             catch (UnauthorizedAccessException)
             {
-                cudnnCopyStatusLabel.Text = "❌ 권한 부족";
+                cudnnCopyStatusLabel.Text = "❌ 권한 부족 (베타칩을 관리자 권한으로 재실행)";
                 cudnnCopyStatusLabel.ForeColor = Color.Red;
                 cudnnCopyButton.Enabled = true;
 

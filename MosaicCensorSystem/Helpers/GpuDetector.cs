@@ -108,9 +108,11 @@ namespace MosaicCensorSystem.Helpers
             result.CudaToolkit.RequiredVersion = CUDA_REQUIRED_VERSION;
             result.CudaToolkit.DownloadUrl = "https://developer.nvidia.com/cuda-11-8-0-download-archive";
             result.CudaToolkit.InstallGuide = 
-                "1. 위 링크에서 CUDA Toolkit 11.8 다운로드\n" +
-                "2. 설치 프로그램 실행 (Express 설치 권장)\n" +
-                "3. 설치 완료 후 PC 재시작";
+            "1. 아래 버튼 클릭 → CUDA Toolkit 11.8 다운로드 페이지\n" +
+            "2. Operating System(운영 체제): Windows(윈도우)\n" +
+            "3. Architecture(번역시 건축학으로 나옴): x86_64\n" +
+            "4. Version(버전): Windows 10이면 '10', Windows 11이면 '11' 선택\n" +
+            "5. Installer Type(설치유형): exe (local) 선택\n";
 
             // 방법 1: 환경변수 확인
             string cudaPath = Environment.GetEnvironmentVariable("CUDA_PATH") ?? "";
@@ -163,14 +165,13 @@ namespace MosaicCensorSystem.Helpers
         {
             result.CuDnn.Name = "cuDNN";
             result.CuDnn.RequiredVersion = CUDNN_REQUIRED_VERSION;
-            result.CuDnn.DownloadUrl = "https://developer.nvidia.com/cudnn";
+            result.CuDnn.DownloadUrl = "https://developer.nvidia.com/rdp/cudnn-archive";
             result.CuDnn.InstallGuide =
                 "1. NVIDIA Developer 계정 로그인 필요\n" +
-                "2. cuDNN v8.x for CUDA 11.x 다운로드\n" +
-                "3. 압축 해제 후 다음 파일들을 CUDA 폴더에 복사:\n" +
-                "   • bin\\cudnn*.dll → C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v11.8\\bin\\\n" +
-                "   • include\\cudnn*.h → ...\\include\\\n" +
-                "   • lib\\x64\\cudnn*.lib → ...\\lib\\x64\\";
+                "2. cuDNN v8.x for CUDA 11.x 다운로드 (위에서 두번째 꺼)\n" +
+                "3. ~~ for windows (Zip) 설치\n"+
+                "4. 다운로드 폴더에서 압축 해제\n" +
+                "5. 베타칩 GPU 설치 가이드의 자동 복사 버튼 클릭";
 
             // CUDA 경로에서 cuDNN DLL 확인
             string cudaPath = Environment.GetEnvironmentVariable("CUDA_PATH") ?? 

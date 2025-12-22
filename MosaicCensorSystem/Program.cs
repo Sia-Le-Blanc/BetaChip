@@ -61,28 +61,7 @@ namespace MosaicCensorSystem
                 return;
             }
 
-            // 6. GPU 환경 감지 및 첫 실행 안내
-            try
-            {
-                var gpuResult = Helpers.GpuDetector.Detect();
-                bool isFirstRun = !File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "gpu_checked.flag"));
-                
-                // 첫 실행이고 CUDA를 사용할 수 없는 경우 안내 표시
-                if (isFirstRun && !gpuResult.CanUseCuda)
-                {
-                    using var gpuForm = new UI.GpuSetupForm(gpuResult);
-                    gpuForm.ShowDialog();
-                    
-                    // 플래그 파일 생성
-                    File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "gpu_checked.flag"), DateTime.Now.ToString());
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"GPU 감지 중 오류: {ex.Message}");
-            }
-
-            // 7. 메인 애플리케이션 실행
+            // 6. 메인 애플리케이션 실행
             try
             {
                 var app = new MosaicApp();

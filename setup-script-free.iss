@@ -1,8 +1,8 @@
-; Inno Setup 스크립트 - BetaChip 무료 버전 (v3.0.2 개정판)
-; 레지스트리 기반 경로 관리로 안정성 극대화
+; Inno Setup 스크립트 - BetaChip 무료 버전 (v4.0.0)
+; GPU 가속 설정 가이드 기능 추가
 
 #define MyAppName "BetaChip"
-#define MyAppVersion "3.0.2"
+#define MyAppVersion "4.0.0"
 #define MyAppPublisher "Sia"
 #define MyAppURL "https://github.com/Sia-Le-Blanc/BetaChip"
 #define MyAppExeName "MosaicCensorSystem.exe"
@@ -87,11 +87,15 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
-    MsgBox('BetaChip 설치가 완료되었습니다!' + #13#10#13#10 +
+    MsgBox('BetaChip v4.0.0 설치가 완료되었습니다!' + #13#10#13#10 +
            '✨ 주요 기능:' + #13#10 +
            '  • 실시간 AI 기반 화면 검열' + #13#10 +
            '  • 다양한 검열 효과 (모자이크/블러/검은박스)' + #13#10 +
            '  • GPU 가속 지원' + #13#10#13#10 +
+           '🆕 v4.0.0 업데이트:' + #13#10 +
+           '  • GPU 설정 가이드 기능 추가' + #13#10 +
+           '  • CUDA/cuDNN 자동 감지 및 설치 안내' + #13#10 +
+           '  • cuDNN 자동 복사 기능' + #13#10#13#10 +
            '💡 추가 기능이 필요하다면 후원자 버전을 확인해보세요!', 
            mbInformation, MB_OK);
   end;
