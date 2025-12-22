@@ -1,4 +1,4 @@
-; Inno Setup 스크립트 - BetaChip 후원자 플러스용 (v3.0.1)
+; Inno Setup 스크립트 - BetaChip 후원자 플러스용 (v4.0.0)
 ; 레지스트리 기반 경로 관리 + 캡션 기능 포함
 
 #define MyAppName "BetaChip"
