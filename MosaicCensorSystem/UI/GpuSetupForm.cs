@@ -57,7 +57,19 @@ namespace MosaicCensorSystem.UI
                 ForeColor = Color.White
             };
             contentPanel.Controls.Add(titleLabel);
-            y += 50;
+            y += 35;
+
+            // 안내 문구
+            var noticeLabel = new Label
+            {
+                Text = "💡 각 단계 진행 후 이 창을 껐다 다시 열어주세요!",
+                Font = new Font("맑은 고딕", 10, FontStyle.Bold),
+                Location = new Point(20, y),
+                AutoSize = true,
+                ForeColor = Color.Yellow
+            };
+            contentPanel.Controls.Add(noticeLabel);
+            y += 35;
 
             // GPU 감지 결과
             y = CreateGpuSection(y);
