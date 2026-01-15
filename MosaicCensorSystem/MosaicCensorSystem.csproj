@@ -12,31 +12,15 @@
     <NoWarn>$(NoWarn);NETSDK1206</NoWarn>
   </PropertyGroup>
 
-  <!-- 무료 버전 (기본) -->
-  <PropertyGroup Condition="'$(P)' != 'true' AND '$(PP)' != 'true'">
-    <AssemblyTitle>Mosaic Censor System - Free Edition</AssemblyTitle>
-    <OutputPath>bin\$(Configuration)\Free\</OutputPath>
-  </PropertyGroup>
-
-  <!-- 후원자 버전 (P=true) -->
-  <PropertyGroup Condition="'$(P)' == 'true' AND '$(PP)' != 'true'">
-    <DefineConstants>$(DefineConstants);PATREON_VERSION</DefineConstants>
-    <AssemblyTitle>Mosaic Censor System - Patreon Edition</AssemblyTitle>
-    <OutputPath>bin\$(Configuration)\Patreon\</OutputPath>
-  </PropertyGroup>
-
-  <!-- 후원자 버전 2 (PP=true) -->
-  <PropertyGroup Condition="'$(PP)' == 'true'">
-    <DefineConstants>$(DefineConstants);PATREON_VERSION;PATREON_PLUS_VERSION</DefineConstants>
-    <AssemblyTitle>Mosaic Censor System - Patreon Plus Edition</AssemblyTitle>
-    <OutputPath>bin\$(Configuration)\PatreonPlus\</OutputPath>
+  <PropertyGroup>
+    <AssemblyTitle>Mosaic Censor System - Unified Edition</AssemblyTitle>
+    <OutputPath>bin\$(Configuration)\Unified\</OutputPath>
   </PropertyGroup>
 
   <PropertyGroup>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
-  <!-- NuGet 패키지 참조 -->
   <ItemGroup>
     <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.15.1" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime.Extensions" Version="0.13.0" />
@@ -44,9 +28,25 @@
     <PackageReference Include="OpenCvSharp4.Extensions" Version="4.9.0.20240103" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.9.0.20240103" />
     <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="System.Net.Http.Json" Version="8.0.0" />
   </ItemGroup>
 
-  <!-- 리소스 파일 설정 -->
+  <ItemGroup>
+    <None Update="Resources\best.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+
+    <Content Include="Resources\Stickers\**\*" Condition="Exists('Resources\Stickers')">
+      <Link>Stickers\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+
+    <Content Include="Resources\OverlayText\**\*" Condition="Exists('Resources\OverlayText')">
+      <Link>Resources\OverlayText\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
   <ItemGroup>
     <EmbeddedResource Update="Properties\Strings.resx">
       <Generator>ResXFileCodeGenerator</Generator>
@@ -58,51 +58,7 @@
     </EmbeddedResource>
   </ItemGroup>
 
-  <!-- ONNX 모델 파일 (모든 버전) -->
   <ItemGroup>
-    <None Update="Resources\best.onnx">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-
-  <!-- 무료 버전: 스티커/캡션 폴더 제외 -->
-  <ItemGroup Condition="'$(P)' != 'true' AND '$(PP)' != 'true'">
-    <Content Include="Resources\Stickers\readme.txt" Condition="Exists('Resources\Stickers\readme.txt')">
-      <Link>Stickers\readme.txt</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-
-  <!-- 후원자 버전: 스티커만 포함 -->
-  <ItemGroup Condition="'$(P)' == 'true' AND '$(PP)' != 'true'">
-    <Content Include="Resources\Loser\**\*">
-      <Link>Stickers\%(RecursiveDir)%(Filename)%(Extension)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Resources\Stickers\**\*" Condition="Exists('Resources\Stickers')">
-      <Link>Stickers\%(RecursiveDir)%(Filename)%(Extension)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-
-  <!-- 후원자 버전 2: 스티커 + 캡션 포함 -->
-  <ItemGroup Condition="'$(PP)' == 'true'">
-    <Content Include="Resources\Loser\**\*">
-      <Link>Stickers\%(RecursiveDir)%(Filename)%(Extension)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Resources\Stickers\**\*" Condition="Exists('Resources\Stickers')">
-      <Link>Stickers\%(RecursiveDir)%(Filename)%(Extension)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Resources\OverlayText\**\*" Condition="Exists('Resources\OverlayText')">
-      <Link>Resources\OverlayText\%(RecursiveDir)%(Filename)%(Extension)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- <Compile Include="Utils\DisplayCompatibility.cs" /> 여기서 이 줄을 삭제해야 합니다 -->
     <Content Include="..\RunBetaChip.bat">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
@@ -111,15 +67,10 @@
     </Content>
   </ItemGroup>
 
-  <!-- 빌드 후 작업: 버전 정보 출력 -->
   <Target Name="ShowBuildInfo" AfterTargets="Build">
     <Message Text="====================================" Importance="high" />
-    <Message Text="빌드 완료!" Importance="high" />
-    <Message Text="버전: $(AssemblyTitle)" Importance="high" />
+    <Message Text="통합 빌드 완료 (서버 연동 모드)" Importance="high" />
     <Message Text="출력 경로: $(OutputPath)" Importance="high" />
-    <Message Text="P 플래그: $(P)" Importance="high" />
-    <Message Text="PP 플래그: $(PP)" Importance="high" />
-    <Message Text="정의된 상수: $(DefineConstants)" Importance="high" />
     <Message Text="====================================" Importance="high" />
   </Target>
 

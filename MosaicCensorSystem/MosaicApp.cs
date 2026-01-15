@@ -2,7 +2,10 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using System.Threading.Tasks; // 추가됨
 using MosaicCensorSystem.UI;
+using MosaicCensorSystem.Services; // 추가됨
+using MosaicCensorSystem.Models;   // 추가됨
 
 namespace MosaicCensorSystem
 {
@@ -10,31 +13,56 @@ namespace MosaicCensorSystem
     {
         public readonly Form Root;
         private readonly GuiController uiController;
-        private readonly CensorService censorService;
+        private CensorService censorService; // readonly 제거
+        private readonly ApiService _apiService = new ApiService(); // 추가됨
 
         public MosaicApp()
         {
             Root = new Form
             {
-                Text = "Mosaic Censor System",
-                Size = new Size(500, 850),  // ★ 높이 증가 (캡션 체크박스 추가로)
+                Text = "Mosaic Censor System (Checking License...)",
+                Size = new Size(500, 850),
                 MinimumSize = new Size(480, 700),
                 StartPosition = FormStartPosition.CenterScreen
             };
 
             uiController = new GuiController(Root);
-            censorService = new CensorService(uiController);
+
+            // 앱 로드 시 서버에서 라이선스 정보 가져오기
+            Root.Load += async (s, e) => await InitializeLicenseAndService();
 
             Root.FormClosing += (s, e) =>
             {
-                censorService.Stop();
-                censorService.Dispose();
+                censorService?.Stop();
+                censorService?.Dispose();
                 uiController.Dispose();
             };
+        }
 
+        private async Task InitializeLicenseAndService()
+        {
+            uiController.LogMessage("🔍 라이선스 정보를 확인 중입니다...");
+
+            // 실제로는 로그인한 유저의 ID를 사용해야 하지만, 현재 테스트용 UID를 사용합니다.
+            var userId = "4e222613-7a83-4063-b717-d7e06bed0122"; 
+            var subInfo = await _apiService.GetSubscriptionAsync(userId);
+
+            if (subInfo == null)
+            {
+                subInfo = new SubscriptionInfo { Tier = "free", Email = "Offline Mode" };
+                uiController.LogMessage("⚠️ 서버 연결 실패. 무료 버전으로 시작합니다.");
+            }
+            else
+            {
+                uiController.LogMessage($"✅ 로그인 성공: {subInfo.Email} ([{subInfo.Tier.ToUpper()}] 등급)");
+            }
+
+            // 구독 정보를 전달하며 서비스 초기화
+            censorService = new CensorService(uiController, subInfo);
+            
             ConnectEvents();
-            uiController.LogMessage("✅ 시스템 초기화 완료. 시작 버튼을 누르세요.");
             uiController.UpdateGpuStatus(censorService.Processor.CurrentExecutionProvider);
+            Root.Text = $"Mosaic Censor System - {subInfo.Tier.ToUpper()} Edition";
         }
 
         private void ConnectEvents()
@@ -43,14 +71,9 @@ namespace MosaicCensorSystem
             uiController.StopClicked += censorService.Stop;
             uiController.CaptureAndSaveClicked += censorService.CaptureAndSave;
             
-#if PATREON_VERSION
+            // 등급 정보에 따라 이벤트 연결 (등급별 기능 제한은 CensorService 내부 로직에서 처리함)
             uiController.StickerToggled += (val) => censorService.UpdateSetting("EnableStickers", val);
-#endif
-
-#if PATREON_PLUS_VERSION
-            // ★ 캡션 토글 이벤트 연결
             uiController.CaptionToggled += (val) => censorService.UpdateSetting("EnableCaptions", val);
-#endif
             
             uiController.FpsChanged += (fps) => censorService.UpdateSetting("TargetFPS", fps);
             uiController.DetectionToggled += (val) => censorService.UpdateSetting("EnableDetection", val);

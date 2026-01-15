@@ -4,6 +4,7 @@ using MosaicCensorSystem.Detection;
 using MosaicCensorSystem.Management;
 using MosaicCensorSystem.Overlay;
 using MosaicCensorSystem.UI;
+using MosaicCensorSystem.Models; // 추가됨
 using OpenCvSharp;
 using System;
 using System.Collections.Generic;
@@ -29,10 +30,8 @@ namespace MosaicCensorSystem
         private readonly MosaicProcessor processor;
         private readonly Random random = new Random();
         private readonly IOverlayManager overlayManager;
-
-#if PATREON_PLUS_VERSION
-        private readonly OverlayTextManager overlayTextManager;
-#endif
+        private readonly OverlayTextManager overlayTextManager; // 항상 선언
+        private readonly SubscriptionInfo _subInfo; // 유저 등급 정보 저장
 
         public MosaicProcessor Processor => processor;
         
@@ -49,26 +48,34 @@ namespace MosaicCensorSystem
 
         private bool disposed = false;
 
-        public CensorService(GuiController uiController)
+        public CensorService(GuiController uiController, SubscriptionInfo subInfo)
         {
             ui = uiController;
+            _subInfo = subInfo; // 등급 정보 주입받음
             capturer = new ScreenCapture();
             processor = new MosaicProcessor(Program.ONNX_MODEL_PATH);
 
-#if PATREON_VERSION
-            overlayManager = new MultiMonitorManager(capturer);
-            ui.LogMessage("🖥️ 후원자 버전: 멀티 모니터 관리자 활성화!");
-#else
-            overlayManager = new SingleMonitorManager(capturer);
-            ui.LogMessage("🖥️ 무료 버전: 단일 모니터 관리자 활성화");
-#endif
+            // 등급에 따라 매니저 결정 (Patreon 이상이면 멀티모니터)
+            if (_subInfo.Tier == "plus" || _subInfo.Tier == "patreon")
+            {
+                overlayManager = new MultiMonitorManager(capturer);
+                ui.LogMessage($"🖥️ [{_subInfo.Tier.ToUpper()}] 등급 확인: 멀티 모니터 관리자 활성화!");
+            }
+            else
+            {
+                overlayManager = new SingleMonitorManager(capturer);
+                ui.LogMessage("🖥️ [FREE] 등급 확인: 단일 모니터 관리자 활성화");
+            }
+
             overlayManager.Initialize(ui);
             overlayManager.UpdateSettings(currentSettings);
 
-#if PATREON_PLUS_VERSION
-            overlayTextManager = new OverlayTextManager((msg) => ui.LogMessage(msg));
-            ui.LogMessage("✨ 후원자 플러스 버전: 캡션 기능 활성화!");
-#endif
+            // Plus 등급이면 캡션 기능 활성화
+            if (_subInfo.Tier == "plus")
+            {
+                overlayTextManager = new OverlayTextManager((msg) => ui.LogMessage(msg));
+                ui.LogMessage("✨ [PLUS] 등급 확인: 캡션 기능 활성화!");
+            }
 
             SetupScreenshotFolder();
             LoadStickers();
@@ -113,9 +120,7 @@ namespace MosaicCensorSystem
         {
             if (rawFrame == null || rawFrame.IsDisposed || rawFrame.Empty())
             {
-#if PATREON_PLUS_VERSION
                 overlayTextManager?.Update(false);
-#endif
                 return null;
             }
 
@@ -126,17 +131,15 @@ namespace MosaicCensorSystem
 
                 if (!currentSettings.EnableDetection)
                 {
-#if PATREON_PLUS_VERSION
                     overlayTextManager?.Update(false);
-#endif
                     return processedFrame;
                 }
 
                 List<Detection.Detection> detections = processor.DetectObjects(rawFrame);
                 bool detectionActive = detections != null && detections.Count > 0;
                 
-#if PATREON_PLUS_VERSION
-                if (currentSettings.EnableCaptions)
+                // 캡션 기능 등급 체크
+                if (currentSettings.EnableCaptions && _subInfo.Tier == "plus")
                 {
                     overlayTextManager?.Update(detectionActive);
                 }
@@ -144,7 +147,6 @@ namespace MosaicCensorSystem
                 {
                     overlayTextManager?.Update(false);
                 }
-#endif
 
                 foreach (var detection in detections)
                 {
@@ -153,7 +155,9 @@ namespace MosaicCensorSystem
                         processor.ApplySingleCensorOptimized(processedFrame, detection);
                     }
 
-                    if (currentSettings.EnableStickers && (squareStickers.Count > 0 || wideStickers.Count > 0))
+                    // 스티커 기능 등급 체크 (Patreon 이상)
+                    bool canUseStickers = _subInfo.Tier == "patreon" || _subInfo.Tier == "plus";
+                    if (canUseStickers && currentSettings.EnableStickers && (squareStickers.Count > 0 || wideStickers.Count > 0))
                     {
                         if (!trackedStickers.TryGetValue(detection.TrackId, out var stickerInfo) || 
                             (DateTime.Now - stickerInfo.AssignedTime).TotalSeconds > 30)
@@ -176,20 +180,17 @@ namespace MosaicCensorSystem
                     }
                 }
 
-                // 주기적으로 오래된 스티커 추적 정리
                 if ((DateTime.Now - lastStickerCleanup).TotalSeconds > STICKER_CLEANUP_INTERVAL_SECONDS)
                 {
                     CleanupExpiredStickerTracking();
                     lastStickerCleanup = DateTime.Now;
                 }
 
-#if PATREON_PLUS_VERSION
-                if (detectionActive && currentSettings.EnableCaptions && 
+                if (detectionActive && currentSettings.EnableCaptions && _subInfo.Tier == "plus" &&
                     processedFrame != null && !processedFrame.IsDisposed)
                 {
                     overlayTextManager?.DrawOverlayOnFrame(processedFrame);
                 }
-#endif
 
                 return processedFrame;
             }
@@ -213,11 +214,6 @@ namespace MosaicCensorSystem
                 foreach (var id in expiredIds)
                 {
                     trackedStickers.Remove(id);
-                }
-
-                if (expiredIds.Count > 0)
-                {
-                    ui.LogMessage($"🧹 {expiredIds.Count}개의 오래된 스티커 추적 정리됨");
                 }
             }
             catch (Exception ex)
@@ -252,7 +248,6 @@ namespace MosaicCensorSystem
             catch (Exception ex)
             {
                 ui.LogMessage($"❌ 캡처 저장 중 오류: {ex.Message}");
-                MessageBox.Show($"캡처 저장 중 오류가 발생했습니다:\n{ex.Message}", "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
         
@@ -276,12 +271,10 @@ namespace MosaicCensorSystem
                 case nameof(CensorSettings.EnableStickers):
                     currentSettings = currentSettings with { EnableStickers = (bool)value };
                     settingsChanged = true;
-                    ui.LogMessage($"🎯 스티커 기능 {(currentSettings.EnableStickers ? "활성화" : "비활성화")}");
                     break;
                 case nameof(CensorSettings.EnableCaptions):
                     currentSettings = currentSettings with { EnableCaptions = (bool)value };
                     settingsChanged = true;
-                    ui.LogMessage($"💬 캡션 기능 {(currentSettings.EnableCaptions ? "활성화" : "비활성화")}");
                     break;
                 case "CensorType": 
                     processor.SetCensorType((CensorType)value); 
@@ -303,8 +296,6 @@ namespace MosaicCensorSystem
             }
         }
         
-        #region Helper Methods 
-        
         private void BlendStickerOnMosaic(Mat frame, Detection.Detection detection, Mat sticker)
         {
             try
@@ -317,7 +308,6 @@ namespace MosaicCensorSystem
 
                 using var resized = new Mat();
                 Cv2.Resize(sticker, resized, new OpenCvSharp.Size(w, h), interpolation: InterpolationFlags.Area);
-
                 using var frameRoi = new Mat(frame, new Rect(x, y, w, h));
 
                 if (resized.Channels() == 4)
@@ -326,10 +316,7 @@ namespace MosaicCensorSystem
                     try
                     {
                         var alpha = channels[3];
-                        if (frameRoi.Channels() == 4)
-                        {
-                            resized.CopyTo(frameRoi, alpha);
-                        }
+                        if (frameRoi.Channels() == 4) resized.CopyTo(frameRoi, alpha);
                         else
                         {
                             using var stickerBgr = new Mat();
@@ -337,118 +324,43 @@ namespace MosaicCensorSystem
                             stickerBgr.CopyTo(frameRoi, alpha);
                         }
                     }
-                    finally
-                    {
-                        foreach (var c in channels)
-                        {
-                            c?.Dispose();
-                        }
-                    }
+                    finally { foreach (var c in channels) c?.Dispose(); }
                 }
-                else if (frameRoi.Channels() == 4)
-                {
-                    using var stickerBgra = new Mat();
-                    Cv2.CvtColor(resized, stickerBgra, ColorConversionCodes.BGR2BGRA);
-                    stickerBgra.CopyTo(frameRoi);
-                }
-                else
-                {
-                    resized.CopyTo(frameRoi);
-                }
+                else resized.CopyTo(frameRoi);
             }
-            catch (Exception ex)
-            {
-                ui.LogMessage($"🚨 스티커 블렌딩 오류: {ex.Message}");
-            }
+            catch { }
         }
         
         private void LoadStickers()
         {
             string stickerPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Stickers");
-            if (!Directory.Exists(stickerPath)) 
-            { 
-                ui.LogMessage($"⚠️ 스티커 폴더 없음: {stickerPath}"); 
-                return; 
-            }
-            
+            if (!Directory.Exists(stickerPath)) return;
             var files = Directory.GetFiles(stickerPath, "*.png");
             foreach (var file in files)
             {
                 using var sticker = Cv2.ImRead(file, ImreadModes.Unchanged);
                 if (sticker.Empty()) continue;
-                
                 float ratio = (float)sticker.Width / sticker.Height;
                 if (ratio > 1.2f) wideStickers.Add(sticker.Clone());
                 else squareStickers.Add(sticker.Clone());
             }
-            ui.LogMessage($"✅ 스티커 로드: Square({squareStickers.Count}), Wide({wideStickers.Count})");
         }
 
         private void SetupScreenshotFolder()
         {
-            try
-            {
-                if (!Directory.Exists(SCREENSHOTS_FOLDER)) 
-                    Directory.CreateDirectory(SCREENSHOTS_FOLDER);
-                if (!File.Exists(DESKTOP_SHORTCUT)) 
-                    TryCreateWindowsShortcut();
-            }
-            catch (Exception ex) 
-            { 
-                ui.LogMessage($"⚠️ 스크린샷 폴더 설정 실패: {ex.Message}"); 
-            }
+            if (!Directory.Exists(SCREENSHOTS_FOLDER)) Directory.CreateDirectory(SCREENSHOTS_FOLDER);
         }
-
-        private void TryCreateWindowsShortcut()
-        {
-            try
-            {
-                string psScript = $@"
-$WshShell = New-Object -comObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut('{DESKTOP_SHORTCUT}')
-$Shortcut.TargetPath = '{SCREENSHOTS_FOLDER}'
-$Shortcut.Description = 'BetaChip 검열된 스크린샷 모음'
-$Shortcut.Save()";
-                var psi = new ProcessStartInfo 
-                { 
-                    FileName = "powershell.exe", 
-                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -Command \"{psScript}\"", 
-                    UseShellExecute = false, 
-                    CreateNoWindow = true 
-                };
-                Process.Start(psi)?.WaitForExit(5000);
-            }
-            catch (Exception ex) 
-            { 
-                ui.LogMessage($"⚠️ PowerShell 바로가기 생성 실패: {ex.Message}"); 
-            }
-        }
-
-        #endregion
 
         public void Dispose()
         {
             if (disposed) return;
-
             Stop();
-            
             capturer?.Dispose();
             processor?.Dispose();
             overlayManager?.Dispose();
-
-#if PATREON_PLUS_VERSION
             overlayTextManager?.Dispose();
-#endif
-            
-            foreach (var s in squareStickers) 
-                s?.Dispose();
-            foreach (var s in wideStickers) 
-                s?.Dispose();
-            
-            squareStickers.Clear();
-            wideStickers.Clear();
-            trackedStickers.Clear();
-
+            foreach (var s in squareStickers) s?.Dispose();
+            foreach (var s in wideStickers) s?.Dispose();
             disposed = true;
             GC.SuppressFinalize(this);
         }
