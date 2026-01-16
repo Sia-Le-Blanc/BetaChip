@@ -169,7 +169,7 @@ namespace MosaicCensorSystem.Helpers
             result.CuDnn.InstallGuide =
                 "1. NVIDIA Developer 계정 로그인 필요\n" +
                 "2. cuDNN v8.x for CUDA 11.x 다운로드 (위에서 두번째 꺼)\n" +
-                "3. ~~ for windows (Zip) 설치\n"+
+                "3. Local Installer for Windows (Zip) 설치 (위에서 첫번째 꺼)\n"+
                 "4. 다운로드 폴더에서 압축 해제\n" +
                 "5. 베타칩 GPU 설치 가이드의 자동 복사 버튼 클릭";
 
