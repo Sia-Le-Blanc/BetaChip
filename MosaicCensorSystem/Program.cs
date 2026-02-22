@@ -177,17 +177,15 @@ namespace MosaicCensorSystem
             string? registryPath = GetPathFromRegistry("ModelPath");
             if (!string.IsNullOrEmpty(registryPath))
             {
-                // 레지스트리 값 정규화
                 registryPath = NormalizePath(registryPath);
-                
-                // 파일 경로인 경우
+
+                // ★수정됨: 파일 경로인 경우, 그 파일이 들어있는 '폴더 경로'로 변환
                 if (!string.IsNullOrEmpty(registryPath) && File.Exists(registryPath))
                 {
-                    Console.WriteLine($"✅ 레지스트리에서 모델 발견: {registryPath}");
-                    return registryPath;
+                    registryPath = Path.GetDirectoryName(registryPath);
                 }
 
-                // 폴더 경로인 경우
+                // 폴더 경로에서 요청받은 modelFileName을 합쳐서 찾기
                 if (!string.IsNullOrEmpty(registryPath) && Directory.Exists(registryPath))
                 {
                     string modelInFolder = Path.Combine(registryPath, modelFileName);
@@ -197,8 +195,8 @@ namespace MosaicCensorSystem
                         return modelInFolder;
                     }
                 }
-                
-                Console.WriteLine($"⚠️ 레지스트리 경로가 유효하지 않음: {registryPath}");
+
+                Console.WriteLine($"⚠️ 레지스트리 경로에서 {modelFileName}을(를) 찾을 수 없음: {registryPath}");
             }
 
             // 2. 레지스트리 폴백 경로들 시도

@@ -20,8 +20,9 @@ namespace MosaicCensorSystem.Detection
         public int[] BBox { get; set; } = new int[4];
         public int Width => BBox[2] - BBox[0];
         public int Height => BBox[3] - BBox[1];
+        
+        // OBB 전용 속성
         public float Angle { get; set; } = 0f;
-        // OBB 전용: 스케일·패딩 보정된 실제 중심 좌표 및 크기
         public float CenterX { get; set; }
         public float CenterY { get; set; }
         public float ObbWidth { get; set; }
@@ -32,7 +33,7 @@ namespace MosaicCensorSystem.Detection
     {
         private InferenceSession model;
         private readonly object _lockObj = new object();
-        private bool isObbMode = false;
+        public bool isObbMode = false;
         private readonly float[] inputBuffer = new float[1 * 3 * 640 * 640];
         private readonly SortTracker tracker = new SortTracker();
 
@@ -48,12 +49,15 @@ namespace MosaicCensorSystem.Detection
 
         public string CurrentExecutionProvider { get; private set; } = "CPU";
 
+        // 기존 표준(HBB) 모델용 클래스
         private static readonly Dictionary<int, string> ClassNames = new()
         {
             {0, "얼굴"}, {1, "가슴"}, {2, "겨드랑이"}, {3, "보지"}, {4, "발"},
             {5, "몸 전체"}, {6, "자지"}, {7, "팬티"}, {8, "눈"}, {9, "손"},
             {10, "교미"}, {11, "신발"}, {12, "가슴_옷"}, {13, "여성"}
         };
+        
+        // 신규 정밀(OBB) 모델용 클래스 (사용자 피드백 반영)
         private static readonly Dictionary<int, string> ClassNamesObb = new()
         {
             {0, "여성얼굴"}, {1, "남성얼굴"}, {2, "눈"}, {3, "가슴"},
@@ -62,17 +66,11 @@ namespace MosaicCensorSystem.Detection
             {12, "옷입은하체"}, {13, "손"}, {14, "발"}, {15, "신발"},
             {16, "몸 전체"}, {17, "항문"}, {18, "성행위"}, {19, "엉덩이"}
         };
-        private static readonly Dictionary<string, float> NmsThresholds = new() { ["얼굴"] = 0.4f, ["가슴"] = 0.4f, ["보지"] = 0.4f };
+        
+        private static readonly Dictionary<string, float> NmsThresholds = new() { ["얼굴"] = 0.4f, ["여성얼굴"] = 0.4f, ["가슴"] = 0.4f, ["보지"] = 0.4f };
 
         public static readonly string[] HbbClasses = new[] { "얼굴", "가슴", "겨드랑이", "보지", "발", "몸 전체", "자지", "팬티", "눈", "손", "교미", "신발", "가슴_옷", "여성" };
-        public static readonly string[] ObbClasses = new[] { "Face_Female", "Face_Male", "Eyes", "Breast_Nude", "Breast_Underwear", "Breast_Clothed", "Armpit", "Navel", "Penis", "Vulva_Nude", "Butt_Nude", "Panty", "Butt_Clothed", "Hands", "Feet", "Shoes", "Body_Full", "Anus", "Sex_Act", "Hpis" };
-        // OBB 모델 내부 클래스명(한국어, 중복 제거) - 타겟 체크박스 재구성에 사용
-        public static readonly string[] ObbUniqueTargets = new[]
-        {
-            "여성얼굴", "남성얼굴", "눈", "가슴", "가슴_속옷", "옷입은가슴",
-            "겨드랑이", "배꼽", "자지", "보지", "하체", "팬티",
-            "옷입은하체", "손", "발", "신발", "몸 전체", "항문", "성행위", "엉덩이"
-        };
+        public static readonly string[] ObbUniqueTargets = new[] { "여성얼굴", "남성얼굴", "눈", "가슴", "가슴_속옷", "옷입은가슴", "겨드랑이", "배꼽", "자지", "보지", "하체", "팬티", "옷입은하체", "손", "발", "신발", "몸 전체", "항문", "성행위", "엉덩이" };
 
         public MosaicProcessor(string modelPath)
         {
@@ -146,12 +144,14 @@ namespace MosaicCensorSystem.Detection
 
         public List<Detection> DetectObjects(Mat frame)
         {
-            if (!IsModelLoaded() || frame == null || frame.Empty()) return new List<Detection>();
-            try
+            if (frame == null || frame.Empty()) return new List<Detection>();
+            
+            lock (_lockObj)
             {
-                lock (_lockObj)
+                if (model == null) return new List<Detection>();
+                
+                try
                 {
-                    if (model == null) return new List<Detection>();
                     var (scale, padX, padY) = Preprocess(frame, inputBuffer);
                     var inputTensor = new DenseTensor<float>(inputBuffer, new[] { 1, 3, 640, 640 });
                     var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("images", inputTensor) };
@@ -182,8 +182,12 @@ namespace MosaicCensorSystem.Detection
                     }
                     return finalDetections;
                 }
+                catch (Exception ex)
+                {
+                    LogCallback?.Invoke($"🚨 추론 에러: {ex.Message}");
+                    return new List<Detection>();
+                }
             }
-            catch (Exception ex) { LogCallback?.Invoke($"🚨 추론 에러: {ex.Message}"); return new List<Detection>(); }
         }
 
         private (float scale, int padX, int padY) Preprocess(Mat frame, float[] buffer)
@@ -213,11 +217,11 @@ namespace MosaicCensorSystem.Detection
             var detections = new List<Detection>();
             var dims = output.Dimensions;
 
-            // 차원 구조에 따른 자동 대응 로직
-            bool isTransposed = dims.Length == 3 && dims[1] > dims[2]; // 예: [1, 8400, 25] 형태인 경우
-            int numAnchors = isTransposed ? dims[1] : dims[2]; // 8400
-            int numFeatures = isTransposed ? dims[2] : dims[1]; // 18 or 25
+            bool isTransposed = dims.Length == 3 && dims[1] > dims[2];
+            int numAnchors = isTransposed ? dims[1] : dims[2];
+            int numFeatures = isTransposed ? dims[2] : dims[1];
 
+            // 특징 개수에 따라 클래스 개수 유추
             int numClasses = isObbMode ? numFeatures - 5 : numFeatures - 4;
 
             for (int i = 0; i < numAnchors; i++)
@@ -227,7 +231,6 @@ namespace MosaicCensorSystem.Detection
 
                 for (int c = 0; c < numClasses; c++)
                 {
-                    // 배열 인덱스 초과 방지 안전장치
                     if (4 + c >= numFeatures) break;
 
                     float score = isTransposed ? output[0, i, 4 + c] : output[0, 4 + c, i];
@@ -251,17 +254,37 @@ namespace MosaicCensorSystem.Detection
                 float w  = isTransposed ? output[0, i, 2] : output[0, 2, i];
                 float h  = isTransposed ? output[0, i, 3] : output[0, 3, i];
 
-                int x1 = (int)((cx - w / 2 - padX) / scale);
-                int y1 = (int)((cy - h / 2 - padY) / scale);
-                int x2 = (int)((cx + w / 2 - padX) / scale);
-                int y2 = (int)((cy + h / 2 - padY) / scale);
+                float origCx = (cx - padX) / scale;
+                float origCy = (cy - padY) / scale;
+                float origW = w / scale;
+                float origH = h / scale;
 
                 float angle = 0f;
+                int x1, y1, x2, y2;
+
                 if (isObbMode)
                 {
-                    // OBB 출력 텐서는 [cx, cy, w, h, cls_0, ..., cls_N, angle] 구조이므로 마지막 인덱스가 angle.
                     int angleIndex = numFeatures - 1;
-                    angle = isTransposed ? output[0, i, angleIndex] : output[0, angleIndex, i];
+                    if (angleIndex > 4)
+                    {
+                        angle = isTransposed ? output[0, i, angleIndex] : output[0, angleIndex, i];
+                    }
+
+                    float degree = angle * (180.0f / (float)Math.PI);
+                    var rotRect = new RotatedRect(new Point2f(origCx, origCy), new Size2f(origW, origH), degree);
+                    var boundRect = rotRect.BoundingRect();
+
+                    x1 = boundRect.Left;
+                    y1 = boundRect.Top;
+                    x2 = boundRect.Right;
+                    y2 = boundRect.Bottom;
+                }
+                else
+                {
+                    x1 = (int)(origCx - origW / 2);
+                    y1 = (int)(origCy - origH / 2);
+                    x2 = (int)(origCx + origW / 2);
+                    y2 = (int)(origCy + origH / 2);
                 }
 
                 detections.Add(new Detection {
@@ -269,10 +292,10 @@ namespace MosaicCensorSystem.Detection
                     Confidence = maxScore,
                     BBox = new[] { Math.Max(0, x1), Math.Max(0, y1), Math.Min(originalWidth, x2), Math.Min(originalHeight, y2) },
                     Angle = angle,
-                    CenterX = (cx - padX) / scale,
-                    CenterY = (cy - padY) / scale,
-                    ObbWidth = w / scale,
-                    ObbHeight = h / scale,
+                    CenterX = origCx,
+                    CenterY = origCy,
+                    ObbWidth = origW,
+                    ObbHeight = origH
                 });
             }
             return detections;
@@ -314,13 +337,11 @@ namespace MosaicCensorSystem.Detection
             {
                 if (detection.ObbWidth <= 0 || detection.ObbHeight <= 0) return;
 
-                // 라디안을 도로 변환
                 float degree = detection.Angle * (180.0f / (float)Math.PI);
                 var center = new Point2f(detection.CenterX, detection.CenterY);
                 var size = new Size2f(detection.ObbWidth, detection.ObbHeight);
                 var rotRect = new RotatedRect(center, size, degree);
 
-                // 1. 회전된 사각형을 감싸는 안전한 HBB(BoundingRect) 구하기
                 Rect boundingRect = rotRect.BoundingRect();
                 int x = Math.Max(0, boundingRect.X);
                 int y = Math.Max(0, boundingRect.Y);
@@ -330,12 +351,10 @@ namespace MosaicCensorSystem.Detection
                 if (w <= 0 || h <= 0) return;
 
                 Rect safeRect = new Rect(x, y, w, h);
-
-                // 2. 화면 전체가 아닌 해당 박스 영역(ROI)만 메모리에 올림
+                
                 using Mat region = new Mat(frame, safeRect);
                 using Mat effectMat = region.Clone();
-
-                // 3. 모자이크/블러 효과를 임시 이미지(effectMat)에 적용
+                
                 if (currentCensorType == CensorType.Mosaic)
                 {
                     int smallW = Math.Max(1, w / strength), smallH = Math.Max(1, h / strength);
@@ -354,34 +373,32 @@ namespace MosaicCensorSystem.Detection
                     effectMat.SetTo(region.Channels() == 4 ? new Scalar(0, 0, 0, 255) : new Scalar(0, 0, 0));
                 }
 
-                // 4. 기울어진 다각형(RotatedRect) 모양의 마스크 생성
+                // 다각형 마스크 생성 및 합성
                 using Mat mask = new Mat(safeRect.Size, MatType.CV_8UC1, Scalar.All(0));
-                var pts = rotRect.Points().Select(p => new Point((int)Math.Round(p.X - x), (int)Math.Round(p.Y - y))).ToArray();
+                var pts = rotRect.Points().Select(p => new OpenCvSharp.Point((int)Math.Round(p.X - x), (int)Math.Round(p.Y - y))).ToArray();
                 Cv2.FillConvexPoly(mask, pts, Scalar.All(255));
 
-                // 5. 마스크가 칠해진 대각선 영역에만 효과를 원본에 덮어쓰기
                 effectMat.CopyTo(region, mask);
             }
             else
             {
-                // 기존 HBB(표준 모델) 렌더링 로직
                 if (detection.Width <= 0 || detection.Height <= 0) return;
                 Rect roi = new Rect(detection.BBox[0], detection.BBox[1], detection.Width, detection.Height);
                 using Mat region = new Mat(frame, roi);
-
+                
                 if (currentCensorType == CensorType.Mosaic)
                 {
-                    int w = region.Width, h = region.Height;
+                    int w = region.Width, h = region.Height; 
                     int smallW = Math.Max(1, w / strength), smallH = Math.Max(1, h / strength);
                     using Mat small = new Mat();
                     Cv2.Resize(region, small, new OpenCvSharp.Size(smallW, smallH), interpolation: InterpolationFlags.Linear);
                     Cv2.Resize(small, region, new OpenCvSharp.Size(w, h), interpolation: InterpolationFlags.Nearest);
                 }
                 else if (currentCensorType == CensorType.Blur)
-                {
-                    int kernelSize = Math.Max(3, strength + 1);
-                    if (kernelSize % 2 == 0) kernelSize++;
-                    Cv2.GaussianBlur(region, region, new OpenCvSharp.Size(kernelSize, kernelSize), 0);
+                { 
+                    int kernelSize = Math.Max(3, strength + 1); 
+                    if (kernelSize % 2 == 0) kernelSize++; 
+                    Cv2.GaussianBlur(region, region, new OpenCvSharp.Size(kernelSize, kernelSize), 0); 
                 }
                 else if (currentCensorType == CensorType.BlackBox)
                 {
@@ -396,7 +413,6 @@ namespace MosaicCensorSystem.Detection
 
         public void WarmUpModel()
         {
-            if (!IsModelLoaded()) return;
             try
             {
                 lock (_lockObj)
@@ -405,7 +421,7 @@ namespace MosaicCensorSystem.Detection
                     Console.WriteLine("🔥 모델 워밍업 시작...");
                     var dummyInput = new DenseTensor<float>(new float[1 * 3 * 640 * 640], new[] { 1, 3, 640, 640 });
                     var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("images", dummyInput) };
-
+                    
                     using (model.Run(inputs)) { }
 
                     Console.WriteLine("✅ 모델 워밍업 완료.");
@@ -419,24 +435,26 @@ namespace MosaicCensorSystem.Detection
 
         public void Dispose()
         {
-            model?.Dispose();
-            model = null;
-
-            _resizedMat?.Dispose();
-            _resizedMat = null;
-            
-            _paddedMat?.Dispose();
-            _paddedMat = null;
-            
-            if (_channels != null)
+            lock (_lockObj)
             {
-                foreach (var c in _channels)
-                {
-                    c?.Dispose();
-                }
-                _channels = null;
-            }
+                model?.Dispose();
+                model = null;
 
+                _resizedMat?.Dispose();
+                _resizedMat = null;
+                
+                _paddedMat?.Dispose();
+                _paddedMat = null;
+                
+                if (_channels != null)
+                {
+                    foreach (var c in _channels)
+                    {
+                        c?.Dispose();
+                    }
+                    _channels = null;
+                }
+            }
             GC.Collect();
             GC.WaitForPendingFinalizers();
         }

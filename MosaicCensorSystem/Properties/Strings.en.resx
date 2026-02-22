@@ -1,60 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
-  <!-- 
-    Microsoft ResX Schema 
-    
-    Version 2.0
-    
-    The primary goals of this format is to allow a simple XML format 
-    that is mostly human readable. The generation and parsing of the 
-    various data types are done through the TypeConverter classes 
-    associated with the data types.
-    
-    Example:
-    
-    ... ado.net/XML headers & schema ...
-    <resheader name="resmimetype">text/microsoft-resx</resheader>
-    <resheader name="version">2.0</resheader>
-    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
-    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
-    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
-    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
-    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
-        <value>[base64 mime encoded serialized .NET Framework object]</value>
-    </data>
-    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
-        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
-        <comment>This is a comment</comment>
-    </data>
-                
-    There are any number of "resheader" rows that contain simple 
-    name/value pairs.
-    
-    Each data row contains a name, and value. The row also contains a 
-    type or mimetype. Type corresponds to a .NET class that support 
-    text/value conversion. The mimetype is used for serialized objects, 
-    and tells the ResXResourceReader how to depersist the object. This is currently not 
-    extensible. For a given mimetype the value must be set accordingly:
-    
-    Note - application/x-microsoft.net.object.binary.base64 is the format 
-    that the ResXResourceWriter will generate, however the reader can 
-    read any of the formats listed below.
-    
-    mimetype: application/x-microsoft.net.object.binary.base64
-    value   : The object must be serialized with 
-            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
-            : and then encoded with base64 encoding.
-    
-    mimetype: application/x-microsoft.net.object.soap.base64
-    value   : The object must be serialized with 
-            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
-            : and then encoded with base64 encoding.
-
-    mimetype: application/x-microsoft.net.object.bytearray.base64
-    value   : The object must be serialized into a byte array 
-            : using a System.ComponentModel.TypeConverter
-            : and then encoded with base64 encoding.
-    -->
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
     <xsd:element name="root" msdata:IsDataSet="true">
@@ -114,304 +59,104 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   
-  <!-- Application Title -->
-  <data name="AppTitle" xml:space="preserve">
-    <value>Mosaic Censor System</value>
-  </data>
+  <data name="AppTitle" xml:space="preserve"><value>Mosaic Censor System</value></data>
+  <data name="GroupControls" xml:space="preserve"><value>System Controls</value></data>
+  <data name="GroupSettings" xml:space="preserve"><value>Settings</value></data>
+  <data name="GroupTargets" xml:space="preserve"><value>Censoring Targets</value></data>
+  <data name="GroupLog" xml:space="preserve"><value>Log</value></data>
   
-  <!-- Group Titles -->
-  <data name="GroupControls" xml:space="preserve">
-    <value>System Controls</value>
-  </data>
-  <data name="GroupSettings" xml:space="preserve">
-    <value>Settings</value>
-  </data>
-  <data name="GroupTargets" xml:space="preserve">
-    <value>Censoring Targets</value>
-  </data>
-  <data name="GroupLog" xml:space="preserve">
-    <value>Log</value>
-  </data>
+  <data name="ButtonStart" xml:space="preserve"><value>Start</value></data>
+  <data name="ButtonStop" xml:space="preserve"><value>Stop</value></data>
+  <data name="ButtonCaptureAndSave" xml:space="preserve"><value>Save Capture</value></data>
   
-  <!-- Button Texts -->
-  <data name="ButtonStart" xml:space="preserve">
-    <value>Start</value>
-  </data>
-  <data name="ButtonStop" xml:space="preserve">
-    <value>Stop</value>
-  </data>
-  <data name="ButtonCaptureAndSave" xml:space="preserve">
-    <value>Save Capture</value>
-  </data>
+  <data name="LabelFps" xml:space="preserve"><value>FPS:</value></data>
+  <data name="LabelDetection" xml:space="preserve"><value>Enable Object Detection</value></data>
+  <data name="LabelEffect" xml:space="preserve"><value>Enable Censoring Effect</value></data>
+  <data name="LabelStickers" xml:space="preserve"><value>Enable Stickers</value></data>
+  <data name="LabelCaptions" xml:space="preserve"><value>Enable Captions</value></data>
+  <data name="LabelDpiCompat" xml:space="preserve"><value>Auto DPI Scaling Fix</value></data>
+  <data name="LabelCensorTypeMosaic" xml:space="preserve"><value>Mosaic</value></data>
+  <data name="LabelCensorTypeBlur" xml:space="preserve"><value>Blur</value></data>
+  <data name="LabelCensorTypeBlackBox" xml:space="preserve"><value>Black Box</value></data>
+  <data name="LabelCensorStrength" xml:space="preserve"><value>Censor Strength:</value></data>
+  <data name="LabelConfidence" xml:space="preserve"><value>Confidence:</value></data>
   
-  <!-- Label Texts -->
-  <data name="LabelFps" xml:space="preserve">
-    <value>FPS:</value>
-  </data>
-  <data name="LabelDetection" xml:space="preserve">
-    <value>Enable Object Detection</value>
-  </data>
-  <data name="LabelEffect" xml:space="preserve">
-    <value>Enable Censoring Effect</value>
-  </data>
-  <data name="LabelStickers" xml:space="preserve">
-    <value>Enable Stickers</value>
-  </data>
-  <data name="LabelCaptions" xml:space="preserve">
-    <value>Enable Captions</value>
-  </data>
-  <data name="LabelCensorTypeMosaic" xml:space="preserve">
-    <value>Mosaic</value>
-  </data>
-  <data name="LabelCensorTypeBlur" xml:space="preserve">
-    <value>Blur</value>
-  </data>
-  <data name="LabelCensorTypeBlackBox" xml:space="preserve">
-    <value>Black Box</value>
-  </data>
-  <data name="LabelCensorStrength" xml:space="preserve">
-    <value>Censor Strength:</value>
-  </data>
-  <data name="LabelConfidence" xml:space="preserve">
-    <value>Confidence:</value>
-  </data>
-  <!-- AI Model Selection -->
-  <data name="LabelModelType" xml:space="preserve">
-    <value>AI Model Type:</value>
-  </data>
-  <data name="ModelStandard" xml:space="preserve">
-    <value>Standard (Fast)</value>
-  </data>
-  <data name="ModelObb" xml:space="preserve">
-    <value>Precision (OBB)</value>
-  </data>
-  <data name="TooltipModelStandard" xml:space="preserve">
-    <value>Standard model. Uses less system resources.</value>
-  </data>
-  <data name="TooltipModelObb" xml:space="preserve">
-    <value>High-performance model for accurate angle detection.</value>
-  </data>
+  <data name="LabelModelType" xml:space="preserve"><value>AI Model Type:</value></data>
+  <data name="ModelStandard" xml:space="preserve"><value>Standard (Fast)</value></data>
+  <data name="ModelObb" xml:space="preserve"><value>Precision (OBB)</value></data>
+  <data name="TooltipModelStandard" xml:space="preserve"><value>Standard model. Uses less system resources.</value></data>
+  <data name="TooltipModelObb" xml:space="preserve"><value>High-performance model for accurate angle detection.</value></data>
+  <data name="LabelExecutionMode" xml:space="preserve"><value>Execution Mode:</value></data>
+  
+  <data name="TooltipStart" xml:space="preserve"><value>Start real-time object detection and censoring.</value></data>
+  <data name="TooltipStop" xml:space="preserve"><value>Stop the running censoring system.</value></data>
+  <data name="TooltipCaptureAndSave" xml:space="preserve"><value>Save the current censored screen as an image file.</value></data>
+  <data name="TooltipFps" xml:space="preserve"><value>Set frames per second to process. (Recommended: 15-30)</value></data>
+  <data name="TooltipStrength" xml:space="preserve"><value>Adjust censoring effect intensity.</value></data>
+  <data name="TooltipConfidence" xml:space="preserve"><value>AI model detection confidence threshold.</value></data>
+  <data name="TooltipDetection" xml:space="preserve"><value>Enable/disable AI object detection.</value></data>
+  <data name="TooltipCensoring" xml:space="preserve"><value>Apply censoring effects to detected objects.</value></data>
+  <data name="TooltipStickers" xml:space="preserve"><value>Display fun stickers over censored areas.</value></data>
+  <data name="TooltipCaptions" xml:space="preserve"><value>Display fun captions on screen when objects are detected.</value></data>
+  <data name="TooltipDpiCompat" xml:space="preserve"><value>Prevents censor offset issues on scaled displays.</value></data>
+  <data name="TooltipMosaic" xml:space="preserve"><value>Creates mosaic effect by enlarging pixels.</value></data>
+  <data name="TooltipBlur" xml:space="preserve"><value>Uses Gaussian blur for smooth blurring effect.</value></data>
+  <data name="TooltipBlackBox" xml:space="preserve"><value>Completely covers detected areas with black color.</value></data>
+  
+  <data name="Target_얼굴" xml:space="preserve"><value>Face</value></data>
+  <data name="Target_여성얼굴" xml:space="preserve"><value>Female Face</value></data>
+  <data name="Target_남성얼굴" xml:space="preserve"><value>Male Face</value></data>
+  <data name="Target_눈" xml:space="preserve"><value>Eyes</value></data>
+  <data name="Target_가슴" xml:space="preserve"><value>Breasts</value></data>
+  <data name="Target_가슴_옷" xml:space="preserve"><value>Clothed Breasts</value></data>
+  <data name="Target_가슴_속옷" xml:space="preserve"><value>Bra</value></data>
+  <data name="Target_옷입은가슴" xml:space="preserve"><value>Clothed Breasts</value></data>
+  <data name="Target_겨드랑이" xml:space="preserve"><value>Armpit</value></data>
+  <data name="Target_배꼽" xml:space="preserve"><value>Navel</value></data>
+  <data name="Target_자지" xml:space="preserve"><value>Penis</value></data>
+  <data name="Target_보지" xml:space="preserve"><value>Pussy</value></data>
+  <data name="Target_하체" xml:space="preserve"><value>Lower Body (Bare)</value></data>
+  <data name="Target_팬티" xml:space="preserve"><value>Panties</value></data>
+  <data name="Target_옷입은하체" xml:space="preserve"><value>Clothed Lower Body</value></data>
+  <data name="Target_손" xml:space="preserve"><value>Hands</value></data>
+  <data name="Target_발" xml:space="preserve"><value>Feet</value></data>
+  <data name="Target_신발" xml:space="preserve"><value>Shoes</value></data>
+  <data name="Target_몸 전체" xml:space="preserve"><value>Full Body</value></data>
+  <data name="Target_항문" xml:space="preserve"><value>Anus</value></data>
+  <data name="Target_성행위" xml:space="preserve"><value>Sex Act</value></data>
+  <data name="Target_교미" xml:space="preserve"><value>Sex</value></data>
+  <data name="Target_엉덩이" xml:space="preserve"><value>Hips</value></data>
+  <data name="Target_여성" xml:space="preserve"><value>Female</value></data>
 
-  <data name="LabelExecutionMode" xml:space="preserve">
-    <value>Execution Mode:</value>
-  </data>
-  
-  <!-- Tooltip Texts -->
-  <!-- Button Tooltips -->
-  <data name="TooltipStart" xml:space="preserve">
-    <value>Start real-time object detection and censoring. Uses AI model to automatically detect and censor sensitive areas on screen.</value>
-  </data>
-  <data name="TooltipStop" xml:space="preserve">
-    <value>Stop the running censoring system. All overlay windows will disappear.</value>
-  </data>
-  <data name="TooltipCaptureAndSave" xml:space="preserve">
-    <value>Save the current censored screen as an image file. Only available when the system is running. Creates a screenshot with AI detection and censoring effects applied.</value>
-  </data>
-  
-  <!-- Slider Tooltips -->
-  <data name="TooltipFps" xml:space="preserve">
-    <value>Set frames per second to process. Higher values are smoother but use more CPU. (Recommended: 15-30)</value>
-  </data>
-  <data name="TooltipStrength" xml:space="preserve">
-    <value>Adjust censoring effect intensity. Mosaic: pixel size, Blur: blur level, Black Box: completely blocks regardless of this setting</value>
-  </data>
-  <data name="TooltipConfidence" xml:space="preserve">
-    <value>AI model detection confidence threshold. Lower values detect more but may increase false positives. (Recommended: 0.3-0.5)</value>
-  </data>
-  
-  <!-- Checkbox Tooltips -->
-  <data name="TooltipDetection" xml:space="preserve">
-    <value>Enable/disable AI object detection. When disabled, no censoring effects will be applied.</value>
-  </data>
-  <data name="TooltipCensoring" xml:space="preserve">
-    <value>Apply censoring effects (mosaic/blur/black box) to detected objects. Use when you want detection only without censoring.</value>
-  </data>
-  <data name="TooltipStickers" xml:space="preserve">
-    <value>Display fun stickers over censored areas. (Patreon exclusive feature)</value>
-  </data>
-  <data name="TooltipCaptions" xml:space="preserve">
-    <value>Display fun captions on screen when objects are detected. Appears at different locations every 3-8 seconds. (Patreon Plus exclusive feature)</value>
-  </data>
-  
-  <!-- Radio Button Tooltips -->
-  <data name="TooltipMosaic" xml:space="preserve">
-    <value>Creates mosaic effect by enlarging pixels. Traditional censoring method.</value>
-  </data>
-  <data name="TooltipBlur" xml:space="preserve">
-    <value>Uses Gaussian blur for smooth blurring effect. Use when you want natural censoring.</value>
-  </data>
-  <data name="TooltipBlackBox" xml:space="preserve">
-    <value>Completely covers detected areas with black color. Provides the strongest blocking effect.</value>
-  </data>
-  
-  <!-- Censoring Target Translations -->
-  <data name="Target_얼굴" xml:space="preserve">
-    <value>Face</value>
-  </data>
-  <data name="Target_가슴" xml:space="preserve">
-    <value>Boobs</value>
-  </data>
-  <data name="Target_겨드랑이" xml:space="preserve">
-    <value>Armpit</value>
-  </data>
-  <data name="Target_보지" xml:space="preserve">
-    <value>Pussy</value>
-  </data>
-  <data name="Target_발" xml:space="preserve">
-    <value>Feet</value>
-  </data>
-  <data name="Target_몸 전체" xml:space="preserve">
-    <value>Full Body</value>
-  </data>
-  <data name="Target_자지" xml:space="preserve">
-    <value>Dick</value>
-  </data>
-  <data name="Target_팬티" xml:space="preserve">
-    <value>Panties</value>
-  </data>
-  <data name="Target_눈" xml:space="preserve">
-    <value>Eyes</value>
-  </data>
-  <data name="Target_손" xml:space="preserve">
-    <value>Hands</value>
-  </data>
-  <data name="Target_교미" xml:space="preserve">
-    <value>Sex</value>
-  </data>
-  <data name="Target_신발" xml:space="preserve">
-    <value>Shoes</value>
-  </data>
-  <data name="Target_가슴_옷" xml:space="preserve">
-    <value>Clothed Boobs</value>
-  </data>
-  <data name="Target_여성" xml:space="preserve">
-    <value>Female</value>
-  </data>
-  <data name="Target_배꼽" xml:space="preserve">
-    <value>Navel</value>
-  </data>
-  <data name="Target_엉덩이" xml:space="preserve">
-    <value>Hips</value>
-  </data>
+  <data name="TooltipTarget_얼굴" xml:space="preserve"><value>Detect and censor faces.</value></data>
+  <data name="TooltipTarget_여성얼굴" xml:space="preserve"><value>Detect and censor female faces.</value></data>
+  <data name="TooltipTarget_남성얼굴" xml:space="preserve"><value>Detect and censor male faces.</value></data>
+  <data name="TooltipTarget_눈" xml:space="preserve"><value>Detect and censor eyes.</value></data>
+  <data name="TooltipTarget_가슴" xml:space="preserve"><value>Detect and censor bare breasts.</value></data>
+  <data name="TooltipTarget_가슴_옷" xml:space="preserve"><value>Detect and censor clothed breasts.</value></data>
+  <data name="TooltipTarget_가슴_속옷" xml:space="preserve"><value>Detect and censor breasts in underwear.</value></data>
+  <data name="TooltipTarget_옷입은가슴" xml:space="preserve"><value>Detect and censor clothed breasts.</value></data>
+  <data name="TooltipTarget_겨드랑이" xml:space="preserve"><value>Detect and censor armpits.</value></data>
+  <data name="TooltipTarget_배꼽" xml:space="preserve"><value>Detect and censor navel.</value></data>
+  <data name="TooltipTarget_자지" xml:space="preserve"><value>Detect and censor male genitals.</value></data>
+  <data name="TooltipTarget_보지" xml:space="preserve"><value>Detect and censor female genitals.</value></data>
+  <data name="TooltipTarget_하체" xml:space="preserve"><value>Detect and censor bare lower body.</value></data>
+  <data name="TooltipTarget_팬티" xml:space="preserve"><value>Detect and censor panties.</value></data>
+  <data name="TooltipTarget_옷입은하체" xml:space="preserve"><value>Detect and censor clothed lower body.</value></data>
+  <data name="TooltipTarget_손" xml:space="preserve"><value>Detect and censor hands.</value></data>
+  <data name="TooltipTarget_발" xml:space="preserve"><value>Detect and censor feet.</value></data>
+  <data name="TooltipTarget_신발" xml:space="preserve"><value>Detect and censor shoes.</value></data>
+  <data name="TooltipTarget_몸 전체" xml:space="preserve"><value>Detect and censor full body.</value></data>
+  <data name="TooltipTarget_항문" xml:space="preserve"><value>Detect and censor anus.</value></data>
+  <data name="TooltipTarget_성행위" xml:space="preserve"><value>Detect and censor sex acts.</value></data>
+  <data name="TooltipTarget_교미" xml:space="preserve"><value>Detect and censor sexual activity.</value></data>
+  <data name="TooltipTarget_엉덩이" xml:space="preserve"><value>Detect and censor hips.</value></data>
+  <data name="TooltipTarget_여성" xml:space="preserve"><value>Detect and censor female body.</value></data>
 
-  <!-- Target Checkbox Tooltips -->
-  <data name="TooltipTarget_얼굴" xml:space="preserve">
-    <value>Detect and censor human faces. Most basic censoring target.</value>
-  </data>
-  <data name="TooltipTarget_가슴" xml:space="preserve">
-    <value>Detect and censor exposed breast areas.</value>
-  </data>
-  <data name="TooltipTarget_겨드랑이" xml:space="preserve">
-    <value>Detect and censor armpit areas.</value>
-  </data>
-  <data name="TooltipTarget_보지" xml:space="preserve">
-    <value>Detect and censor female genitals.</value>
-  </data>
-  <data name="TooltipTarget_발" xml:space="preserve">
-    <value>Detect and censor feet. For blocking foot fetish content.</value>
-  </data>
-  <data name="TooltipTarget_몸 전체" xml:space="preserve">
-    <value>Detect and censor full body nudity.</value>
-  </data>
-  <data name="TooltipTarget_자지" xml:space="preserve">
-    <value>Detect and censor male genitals.</value>
-  </data>
-  <data name="TooltipTarget_팬티" xml:space="preserve">
-    <value>Detect and censor underwear (panties).</value>
-  </data>
-  <data name="TooltipTarget_눈" xml:space="preserve">
-    <value>Detect and censor eye areas only. For identity protection.</value>
-  </data>
-  <data name="TooltipTarget_손" xml:space="preserve">
-    <value>Detect and censor hand areas.</value>
-  </data>
-  <data name="TooltipTarget_교미" xml:space="preserve">
-    <value>Detect and censor sexual activity scenes.</value>
-  </data>
-  <data name="TooltipTarget_신발" xml:space="preserve">
-    <value>Detect and censor shoes.</value>
-  </data>
-  <data name="TooltipTarget_가슴_옷" xml:space="preserve">
-    <value>Detect and censor clothed breast areas.</value>
-  </data>
-  <data name="TooltipTarget_여성" xml:space="preserve">
-    <value>Detect and censor overall female appearance.</value>
-  </data>
-  <data name="TooltipTarget_배꼽" xml:space="preserve">
-    <value>Detect and censor navel area. (OBB model only)</value>
-  </data>
-  <data name="TooltipTarget_엉덩이" xml:space="preserve">
-    <value>Detect and censor hips.</value>
-  </data>
-
-  <!-- OBB-Exclusive Censoring Targets -->
-  <data name="Target_여성얼굴" xml:space="preserve">
-    <value>Female Face</value>
-  </data>
-  <data name="Target_남성얼굴" xml:space="preserve">
-    <value>Male Face</value>
-  </data>
-  <data name="Target_가슴_속옷" xml:space="preserve">
-    <value>Bra</value>
-  </data>
-  <data name="Target_옷입은가슴" xml:space="preserve">
-    <value>Clothed Breasts</value>
-  </data>
-  <data name="Target_하체" xml:space="preserve">
-    <value>Lower Body (Bare)</value>
-  </data>
-  <data name="Target_옷입은하체" xml:space="preserve">
-    <value>Clothed Lower Body</value>
-  </data>
-  <data name="Target_항문" xml:space="preserve">
-    <value>Anus</value>
-  </data>
-  <data name="Target_성행위" xml:space="preserve">
-    <value>Sex Act</value>
-  </data>
-
-  <!-- OBB-Exclusive Target Tooltips -->
-  <data name="TooltipTarget_여성얼굴" xml:space="preserve">
-    <value>Detect and censor female faces.</value>
-  </data>
-  <data name="TooltipTarget_남성얼굴" xml:space="preserve">
-    <value>Detect and censor male faces.</value>
-  </data>
-  <data name="TooltipTarget_가슴_속옷" xml:space="preserve">
-    <value>Detect and censor breasts in underwear.</value>
-  </data>
-  <data name="TooltipTarget_옷입은가슴" xml:space="preserve">
-    <value>Detect and censor clothed breasts.</value>
-  </data>
-  <data name="TooltipTarget_하체" xml:space="preserve">
-    <value>Detect and censor bare lower body.</value>
-  </data>
-  <data name="TooltipTarget_옷입은하체" xml:space="preserve">
-    <value>Detect and censor clothed lower body.</value>
-  </data>
-  <data name="TooltipTarget_항문" xml:space="preserve">
-    <value>Detect and censor anus.</value>
-  </data>
-  <data name="TooltipTarget_성행위" xml:space="preserve">
-    <value>Detect and censor sex acts.</value>
-  </data>
-
-  <!-- GPU Status Translations -->
-  <data name="GPU_CUDA" xml:space="preserve">
-    <value>CUDA (NVIDIA GPU Accelerated)</value>
-  </data>
-  <data name="GPU_DirectML" xml:space="preserve">
-    <value>DirectML (Windows GPU Accelerated)</value>
-  </data>
-  <data name="GPU_CPU" xml:space="preserve">
-    <value>CPU (Software Processing)</value>
-  </data>
+  <data name="GPU_CUDA" xml:space="preserve"><value>CUDA (NVIDIA GPU Accelerated)</value></data>
+  <data name="GPU_DirectML" xml:space="preserve"><value>DirectML (Windows GPU Accelerated)</value></data>
+  <data name="GPU_CPU" xml:space="preserve"><value>CPU (Software Processing)</value></data>
   
-  <!-- Status Messages -->
-  <data name="StatusReady" xml:space="preserve">
-    <value>⭕ System Standby</value>
-  </data>
-  <data name="StatusRunning" xml:space="preserve">
-    <value>🚀 System Running...</value>
-  </data>
+  <data name="StatusReady" xml:space="preserve"><value>⭕ System Standby</value></data>
+  <data name="StatusRunning" xml:space="preserve"><value>🚀 System Running...</value></data>
 </root>

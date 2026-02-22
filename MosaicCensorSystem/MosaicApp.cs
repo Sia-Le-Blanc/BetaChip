@@ -2,11 +2,11 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
-using System.Threading.Tasks; // 추가됨
+using System.Threading.Tasks; 
 using MosaicCensorSystem.UI;
-using MosaicCensorSystem.Services; // 추가됨
-using MosaicCensorSystem.Models;   // 추가됨
-using MosaicCensorSystem.Detection; // 추가됨
+using MosaicCensorSystem.Services; 
+using MosaicCensorSystem.Models;   
+using MosaicCensorSystem.Detection; // OBB 타겟 클래스 참조를 위해 추가
 
 namespace MosaicCensorSystem
 {
@@ -14,8 +14,8 @@ namespace MosaicCensorSystem
     {
         public readonly Form Root;
         private readonly GuiController uiController;
-        private CensorService censorService; // readonly 제거
-        private readonly ApiService _apiService = new ApiService(); // 추가됨
+        private CensorService censorService; 
+        private readonly ApiService _apiService = new ApiService(); 
 
         public MosaicApp()
         {
@@ -89,24 +89,27 @@ namespace MosaicCensorSystem
                 using var gpuForm = new UI.GpuSetupForm(gpuResult);
                 gpuForm.ShowDialog();
             };
+            
+            // ★ 핵심: 모델 교체 시 런타임 핫스왑 처리 및 UI 타겟 체크박스 동적 재구성
             uiController.ModelTypeChanged += (isObb) =>
             {
                 string newModelPath = isObb ? Program.OBB_MODEL_PATH : Program.STANDARD_MODEL_PATH;
                 uiController.LogMessage($"🔄 모델 교체 중... ({(isObb ? "OBB 정밀 모델" : "표준 모델")})");
 
+                // processor의 모델을 실시간으로 교체
                 bool success = censorService.Processor.SwitchModel(newModelPath, isObb);
 
-                if (success)
+                if (success) 
                 {
                     uiController.LogMessage("✅ 모델 교체 완료!");
-                    // UI에 OBB용/HBB용 클래스 리스트를 전달하여 체크박스를 동적으로 재생성함
+                    // 모델에 맞춰 UI 체크박스 항목을 14개(HBB) 또는 20개(OBB)로 즉시 변경합니다.
                     uiController.RebuildTargetCheckboxes(isObb ? MosaicProcessor.ObbUniqueTargets : MosaicProcessor.HbbClasses);
                 }
-                else uiController.LogMessage("❌ 모델 교체 실패! 경로를 확인하세요.");
+                else 
+                {
+                    uiController.LogMessage("❌ 모델 교체 실패! 파일 경로를 확인하세요.");
+                }
             };
-
-            // 앱 시작 시 초기 HBB 타겟 목록으로 체크박스를 구성하고 processor.Targets에 동기화
-            uiController.RebuildTargetCheckboxes(MosaicProcessor.HbbClasses);
         }
 
         public void Run()

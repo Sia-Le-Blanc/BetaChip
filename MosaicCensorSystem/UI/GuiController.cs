@@ -137,7 +137,8 @@ namespace MosaicCensorSystem.UI
                 ForeColor = Color.White,
                 Font = new Font("Arial", 10, FontStyle.Bold),
                 Size = new Size(120, 40),
-                Location = new Point(20, 25)
+                Location = new Point(20, 25),
+                Text = "시작"
             };
             stopButton = new Button
             {
@@ -146,7 +147,8 @@ namespace MosaicCensorSystem.UI
                 Font = new Font("Arial", 10, FontStyle.Bold),
                 Size = new Size(120, 40),
                 Location = new Point(160, 25),
-                Enabled = false
+                Enabled = false,
+                Text = "중지"
             };
             captureButton = new Button
             {
@@ -154,7 +156,8 @@ namespace MosaicCensorSystem.UI
                 ForeColor = Color.White,
                 Font = new Font("Arial", 10, FontStyle.Bold),
                 Size = new Size(120, 40),
-                Location = new Point(300, 25)
+                Location = new Point(300, 25),
+                Text = "캡처 저장"
             };
 
             startButton.Click += (s, e) => StartClicked?.Invoke();
@@ -179,7 +182,7 @@ namespace MosaicCensorSystem.UI
             settingsGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 520) };
             CreateSettingsContent(settingsGroup);
             parent.Controls.Add(settingsGroup);
-            y += 480;
+            y += 530; // 초기 여유공간 설정
 
             logGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 120) };
             logTextBox = new TextBox
@@ -193,6 +196,11 @@ namespace MosaicCensorSystem.UI
             };
             logGroup.Controls.Add(logTextBox);
             parent.Controls.Add(logGroup);
+            
+            // 모델 교체 시 체크박스가 늘어나면 로그 박스의 위치도 자동으로 밀려나도록 이벤트 연결
+            settingsGroup.SizeChanged += (s, e) => {
+                logGroup.Location = new Point(10, settingsGroup.Location.Y + settingsGroup.Height + 10);
+            };
         }
 
         private void CreateSettingsContent(GroupBox settingsGroup)
@@ -243,19 +251,16 @@ namespace MosaicCensorSystem.UI
             settingsGroup.Controls.AddRange(new Control[] { enableDetectionCheckBox, enableCensoringCheckBox });
             y += 30;
 
-            // 스티커 체크박스 (항상 생성)
             enableStickersCheckBox = new CheckBox { Checked = false, Location = new Point(10, y), AutoSize = true, Text = "스티커 활성화" };
             enableStickersCheckBox.CheckedChanged += (s, e) => StickerToggled?.Invoke(enableStickersCheckBox.Checked);
             settingsGroup.Controls.Add(enableStickersCheckBox);
             y += 30;
 
-            // 캡션 체크박스 (항상 생성)
             enableCaptionsCheckBox = new CheckBox { Checked = true, Location = new Point(10, y), AutoSize = true, Text = "캡션 활성화" };
             enableCaptionsCheckBox.CheckedChanged += (s, e) => CaptionToggled?.Invoke(enableCaptionsCheckBox.Checked);
             settingsGroup.Controls.Add(enableCaptionsCheckBox);
             y += 30;
 
-            // DPI 호환성 모드
             enableDpiCompatCheckBox = new CheckBox { Checked = UserSettings.IsCompatibilityModeEnabled(), Location = new Point(10, y), AutoSize = true, Text = "자동 화면 배율 해제" };
             enableDpiCompatCheckBox.CheckedChanged += (s, e) =>
             {
@@ -302,23 +307,69 @@ namespace MosaicCensorSystem.UI
             y += 40;
 
             targetsGroup = new GroupBox { Location = new Point(10, y), Size = new Size(440, 130) };
-            var allTargets = new[] { "얼굴", "가슴", "겨드랑이", "보지", "발", "몸 전체", "자지", "팬티", "눈", "손", "교미", "신발", "가슴_옷", "여성" };
-            var defaultTargets = new[] { "얼굴", "가슴", "보지", "팬티" };
-            for (int i = 0; i < allTargets.Length; i++)
+            settingsGroup.Controls.Add(targetsGroup);
+            
+            // 프로그램 최초 시작 시 HBB 모델 타겟 목록으로 체크박스 생성
+            RebuildTargetCheckboxes(MosaicProcessor.HbbClasses);
+        }
+
+        public void RebuildTargetCheckboxes(string[] availableTargets)
+        {
+            if (rootForm.InvokeRequired) 
+            { 
+                rootForm.Invoke(new Action(() => RebuildTargetCheckboxes(availableTargets))); 
+                return; 
+            }
+            
+            if (availableTargets == null || availableTargets.Length == 0) return;
+
+            // 기존에 사용자가 선택해둔 타겟 상태를 보존 (가슴 등 이름이 일치하면 그대로 유지)
+            var previouslySelected = targetCheckBoxes
+                .Where(kvp => kvp.Value.Checked)
+                .Select(kvp => kvp.Key)
+                .ToHashSet();
+
+            // 기존 체크박스 삭제
+            foreach (var cb in targetCheckBoxes.Values)
             {
+                targetsGroup.Controls.Remove(cb);
+                cb.Dispose();
+            }
+            targetCheckBoxes.Clear();
+
+            // HBB, OBB 각각의 상황에 맞는 초기 기본 선택값 세팅
+            var defaultTargets = availableTargets.Contains("여성얼굴") 
+                ? new[] { "여성얼굴", "가슴", "보지", "팬티" } // OBB 기본값
+                : new[] { "얼굴", "가슴", "보지", "팬티" };     // HBB 기본값
+
+            bool useDefault = !previouslySelected.Any(t => availableTargets.Contains(t));
+
+            for (int i = 0; i < availableTargets.Length; i++)
+            {
+                string target = availableTargets[i];
+                bool isChecked = useDefault ? defaultTargets.Contains(target) : previouslySelected.Contains(target);
+
                 var checkbox = new CheckBox
                 {
-                    Text = allTargets[i],
-                    Checked = defaultTargets.Contains(allTargets[i]),
+                    Text = target, // 바로 아래 UpdateUIText에서 다국어 처리됨
+                    Checked = isChecked,
                     Location = new Point(15 + (i % 3) * 140, 25 + (i / 3) * 20),
                     AutoSize = true,
-                    Tag = allTargets[i]
+                    Tag = target
                 };
                 checkbox.CheckedChanged += OnTargetChanged;
-                targetCheckBoxes[allTargets[i]] = checkbox;
+                targetCheckBoxes[target] = checkbox;
                 targetsGroup.Controls.Add(checkbox);
             }
-            settingsGroup.Controls.Add(targetsGroup);
+
+            // 늘어난/줄어든 체크박스 갯수에 맞춰 부모 UI 패널 높이를 동적으로 자동 조절
+            int numRows = (availableTargets.Length + 2) / 3;
+            int newHeight = 35 + numRows * 20;
+            targetsGroup.Size = new Size(440, newHeight);
+            settingsGroup.Size = new Size(460, targetsGroup.Location.Y + newHeight + 10);
+
+            UpdateUIText();
+            OnTargetChanged(null, EventArgs.Empty);
         }
 
         private void OnLanguageChanged(object sender, EventArgs e)
@@ -344,7 +395,6 @@ namespace MosaicCensorSystem.UI
                 enableDetectionCheckBox.Text = GetLocalizedString("LabelDetection");
                 enableCensoringCheckBox.Text = GetLocalizedString("LabelEffect");
                 
-                // 전처리기가 없으므로 null 체크 없이 바로 텍스트 업데이트
                 if (enableStickersCheckBox != null) enableStickersCheckBox.Text = GetLocalizedString("LabelStickers");
                 if (enableCaptionsCheckBox != null) enableCaptionsCheckBox.Text = GetLocalizedString("LabelCaptions");
                 if (enableDpiCompatCheckBox != null) enableDpiCompatCheckBox.Text = GetLocalizedString("LabelDpiCompat") ?? "자동 화면 배율 해제";
@@ -427,58 +477,6 @@ namespace MosaicCensorSystem.UI
         {
             var selected = targetCheckBoxes.Where(kvp => kvp.Value.Checked).Select(kvp => kvp.Key).ToList();
             TargetsChanged?.Invoke(selected);
-        }
-
-        public void RebuildTargetCheckboxes(string[] availableTargets)
-        {
-            if (rootForm.InvokeRequired) { rootForm.Invoke(new Action(() => RebuildTargetCheckboxes(availableTargets))); return; }
-            if (availableTargets == null || availableTargets.Length == 0) return;
-
-            // 현재 선택된 타겟 기억
-            var previouslySelected = targetCheckBoxes
-                .Where(kvp => kvp.Value.Checked)
-                .Select(kvp => kvp.Key)
-                .ToHashSet();
-
-            // 기존 체크박스 제거
-            foreach (var cb in targetCheckBoxes.Values)
-            {
-                targetsGroup.Controls.Remove(cb);
-                cb.Dispose();
-            }
-            targetCheckBoxes.Clear();
-
-            // 이전 선택과 새 목록의 교집합이 없으면 기본 타겟 사용
-            var defaultTargets = availableTargets.Contains("여성얼굴")
-                ? new[] { "여성얼굴", "가슴", "보지", "팬티" }  // OBB 모드 기본값
-                : new[] { "얼굴", "가슴", "보지", "팬티" };      // HBB 모드 기본값
-            bool useDefault = !previouslySelected.Any(t => availableTargets.Contains(t));
-
-            // 새 체크박스 생성
-            for (int i = 0; i < availableTargets.Length; i++)
-            {
-                string target = availableTargets[i];
-                bool isChecked = useDefault ? defaultTargets.Contains(target) : previouslySelected.Contains(target);
-
-                var checkbox = new CheckBox
-                {
-                    Text = target,
-                    Checked = isChecked,
-                    Location = new Point(15 + (i % 3) * 140, 25 + (i / 3) * 20),
-                    AutoSize = true,
-                    Tag = target
-                };
-                checkbox.CheckedChanged += OnTargetChanged;
-                targetCheckBoxes[target] = checkbox;
-                targetsGroup.Controls.Add(checkbox);
-            }
-
-            // GroupBox 높이 조정
-            int numRows = (availableTargets.Length + 2) / 3;
-            targetsGroup.Size = new Size(440, 30 + numRows * 20 + 15);
-
-            UpdateUIText();
-            OnTargetChanged(null, EventArgs.Empty);
         }
 
         public void UpdateStatus(string message, Color color)

@@ -1,60 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
-  <!-- 
-    Microsoft ResX Schema 
-    
-    Version 2.0
-    
-    The primary goals of this format is to allow a simple XML format 
-    that is mostly human readable. The generation and parsing of the 
-    various data types are done through the TypeConverter classes 
-    associated with the data types.
-    
-    Example:
-    
-    ... ado.net/XML headers & schema ...
-    <resheader name="resmimetype">text/microsoft-resx</resheader>
-    <resheader name="version">2.0</resheader>
-    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
-    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
-    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
-    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
-    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
-        <value>[base64 mime encoded serialized .NET Framework object]</value>
-    </data>
-    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
-        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
-        <comment>This is a comment</comment>
-    </data>
-                
-    There are any number of "resheader" rows that contain simple 
-    name/value pairs.
-    
-    Each data row contains a name, and value. The row also contains a 
-    type or mimetype. Type corresponds to a .NET class that support 
-    text/value conversion. The mimetype is used for serialized objects, 
-    and tells the ResXResourceReader how to depersist the object. This is currently not 
-    extensible. For a given mimetype the value must be set accordingly:
-    
-    Note - application/x-microsoft.net.object.binary.base64 is the format 
-    that the ResXResourceWriter will generate, however the reader can 
-    read any of the formats listed below.
-    
-    mimetype: application/x-microsoft.net.object.binary.base64
-    value   : The object must be serialized with 
-            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
-            : and then encoded with base64 encoding.
-    
-    mimetype: application/x-microsoft.net.object.soap.base64
-    value   : The object must be serialized with 
-            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
-            : and then encoded with base64 encoding.
-
-    mimetype: application/x-microsoft.net.object.bytearray.base64
-    value   : The object must be serialized into a byte array 
-            : using a System.ComponentModel.TypeConverter
-            : and then encoded with base64 encoding.
-    -->
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
     <xsd:element name="root" msdata:IsDataSet="true">
@@ -114,12 +59,10 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   
-  <!-- 애플리케이션 제목 -->
   <data name="AppTitle" xml:space="preserve">
     <value>모자이크 검열 시스템</value>
   </data>
   
-  <!-- 그룹 제목들 -->
   <data name="GroupControls" xml:space="preserve">
     <value>시스템 제어</value>
   </data>
@@ -133,7 +76,6 @@
     <value>로그</value>
   </data>
   
-  <!-- 버튼 텍스트들 -->
   <data name="ButtonStart" xml:space="preserve">
     <value>시작</value>
   </data>
@@ -144,7 +86,6 @@
     <value>캡처 저장</value>
   </data>
   
-  <!-- 레이블 텍스트들 -->
   <data name="LabelFps" xml:space="preserve">
     <value>FPS:</value>
   </data>
@@ -159,6 +100,9 @@
   </data>
   <data name="LabelCaptions" xml:space="preserve">
     <value>캡션 활성화</value>
+  </data>
+  <data name="LabelDpiCompat" xml:space="preserve">
+    <value>자동 화면 배율 해제</value>
   </data>
   <data name="LabelCensorTypeMosaic" xml:space="preserve">
     <value>모자이크</value>
@@ -175,7 +119,7 @@
   <data name="LabelConfidence" xml:space="preserve">
     <value>신뢰도:</value>
   </data>
-  <!-- AI 모델 선택 -->
+  
   <data name="LabelModelType" xml:space="preserve">
     <value>AI 모델 선택:</value>
   </data>
@@ -196,8 +140,6 @@
     <value>실행 모드:</value>
   </data>
   
-  <!-- 툴팁 텍스트들 -->
-  <!-- 버튼 툴팁 -->
   <data name="TooltipStart" xml:space="preserve">
     <value>실시간 객체 감지 및 검열을 시작합니다. AI 모델을 사용하여 화면의 민감한 영역을 자동으로 검열처리합니다.</value>
   </data>
@@ -207,8 +149,6 @@
   <data name="TooltipCaptureAndSave" xml:space="preserve">
     <value>현재 검열된 화면을 이미지 파일로 저장합니다. 시스템이 실행 중일 때만 사용 가능하며, AI 검출 및 검열 효과가 적용된 스크린샷을 생성합니다.</value>
   </data>
-  
-  <!-- 슬라이더 툴팁 -->
   <data name="TooltipFps" xml:space="preserve">
     <value>초당 처리할 프레임 수를 설정합니다. 높을수록 부드럽지만 CPU 사용량이 증가합니다. (권장: 15-30)</value>
   </data>
@@ -218,8 +158,6 @@
   <data name="TooltipConfidence" xml:space="preserve">
     <value>AI 모델의 감지 신뢰도 임계값입니다. 낮을수록 더 많이 감지하지만 오탐지가 증가할 수 있습니다. (권장: 0.3-0.5)</value>
   </data>
-  
-  <!-- 체크박스 툴팁 -->
   <data name="TooltipDetection" xml:space="preserve">
     <value>AI 객체 감지 기능을 활성화/비활성화합니다. 비활성화하면 검열 효과도 적용되지 않습니다.</value>
   </data>
@@ -232,8 +170,9 @@
   <data name="TooltipCaptions" xml:space="preserve">
     <value>감지된 영역이 있을 때 화면에 재미있는 캡션을 표시합니다. 3~8초마다 다른 위치에 나타납니다. (후원자 플러스 전용 기능)</value>
   </data>
-  
-  <!-- 라디오 버튼 툴팁 -->
+  <data name="TooltipDpiCompat" xml:space="preserve">
+    <value>디스플레이 배율(125%, 150% 등)이 적용된 모니터에서 검열 영역이 어긋나는 문제를 방지합니다. 체크 후 프로그램을 재시작해야 적용됩니다.</value>
+  </data>
   <data name="TooltipMosaic" xml:space="preserve">
     <value>픽셀 단위로 이미지를 확대하여 모자이크 효과를 만듭니다. 전통적인 검열 방식입니다.</value>
   </data>
@@ -244,159 +183,56 @@
     <value>감지된 영역을 완전히 검은색으로 덮어버립니다. 가장 확실한 차단 효과를 제공합니다.</value>
   </data>
   
-  <!-- 검열 대상 번역 -->
-  <data name="Target_얼굴" xml:space="preserve">
-    <value>얼굴</value>
-  </data>
-  <data name="Target_가슴" xml:space="preserve">
-    <value>가슴</value>
-  </data>
-  <data name="Target_겨드랑이" xml:space="preserve">
-    <value>겨드랑이</value>
-  </data>
-  <data name="Target_보지" xml:space="preserve">
-    <value>보지</value>
-  </data>
-  <data name="Target_발" xml:space="preserve">
-    <value>발</value>
-  </data>
-  <data name="Target_몸 전체" xml:space="preserve">
-    <value>몸 전체</value>
-  </data>
-  <data name="Target_자지" xml:space="preserve">
-    <value>자지</value>
-  </data>
-  <data name="Target_팬티" xml:space="preserve">
-    <value>팬티</value>
-  </data>
-  <data name="Target_눈" xml:space="preserve">
-    <value>눈</value>
-  </data>
-  <data name="Target_손" xml:space="preserve">
-    <value>손</value>
-  </data>
-  <data name="Target_교미" xml:space="preserve">
-    <value>교미</value>
-  </data>
-  <data name="Target_신발" xml:space="preserve">
-    <value>신발</value>
-  </data>
-  <data name="Target_가슴_옷" xml:space="preserve">
-    <value>가슴_옷</value>
-  </data>
-  <data name="Target_여성" xml:space="preserve">
-    <value>여성</value>
-  </data>
-  <data name="Target_배꼽" xml:space="preserve">
-    <value>배꼽</value>
-  </data>
-  <data name="Target_엉덩이" xml:space="preserve">
-    <value>엉덩이 (골반)</value>
-  </data>
+  <data name="Target_얼굴" xml:space="preserve"><value>얼굴</value></data>
+  <data name="Target_여성얼굴" xml:space="preserve"><value>여성 얼굴</value></data>
+  <data name="Target_남성얼굴" xml:space="preserve"><value>남성 얼굴</value></data>
+  <data name="Target_눈" xml:space="preserve"><value>눈</value></data>
+  <data name="Target_가슴" xml:space="preserve"><value>가슴</value></data>
+  <data name="Target_가슴_옷" xml:space="preserve"><value>가슴(옷)</value></data>
+  <data name="Target_가슴_속옷" xml:space="preserve"><value>가슴(속옷)</value></data>
+  <data name="Target_옷입은가슴" xml:space="preserve"><value>옷 입은 가슴</value></data>
+  <data name="Target_겨드랑이" xml:space="preserve"><value>겨드랑이</value></data>
+  <data name="Target_배꼽" xml:space="preserve"><value>배꼽</value></data>
+  <data name="Target_자지" xml:space="preserve"><value>자지</value></data>
+  <data name="Target_보지" xml:space="preserve"><value>보지</value></data>
+  <data name="Target_하체" xml:space="preserve"><value>하체(맨엉덩이)</value></data>
+  <data name="Target_팬티" xml:space="preserve"><value>팬티</value></data>
+  <data name="Target_옷입은하체" xml:space="preserve"><value>옷 입은 하체</value></data>
+  <data name="Target_손" xml:space="preserve"><value>손</value></data>
+  <data name="Target_발" xml:space="preserve"><value>발</value></data>
+  <data name="Target_신발" xml:space="preserve"><value>신발</value></data>
+  <data name="Target_몸 전체" xml:space="preserve"><value>몸 전체</value></data>
+  <data name="Target_항문" xml:space="preserve"><value>항문</value></data>
+  <data name="Target_성행위" xml:space="preserve"><value>성행위</value></data>
+  <data name="Target_교미" xml:space="preserve"><value>교미</value></data>
+  <data name="Target_엉덩이" xml:space="preserve"><value>엉덩이(골반)</value></data>
+  <data name="Target_여성" xml:space="preserve"><value>여성</value></data>
 
-  <!-- 타겟 체크박스 툴팁 -->
-  <data name="TooltipTarget_얼굴" xml:space="preserve">
-    <value>사람의 얼굴을 감지하고 검열합니다. 가장 기본적인 검열 대상입니다.</value>
-  </data>
-  <data name="TooltipTarget_가슴" xml:space="preserve">
-    <value>노출된 가슴 부위를 감지하고 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_겨드랑이" xml:space="preserve">
-    <value>겨드랑이 부위를 감지하고 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_보지" xml:space="preserve">
-    <value>여성 생식기를 감지하고 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_발" xml:space="preserve">
-    <value>발 부위를 감지하고 검열합니다. 풋 페티시 관련 콘텐츠 차단용입니다.</value>
-  </data>
-  <data name="TooltipTarget_몸 전체" xml:space="preserve">
-    <value>전신 누드를 감지하고 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_자지" xml:space="preserve">
-    <value>남성 생식기를 감지하고 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_팬티" xml:space="preserve">
-    <value>속옷(팬티)을 감지하고 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_눈" xml:space="preserve">
-    <value>눈 부위만 따로 감지하고 검열합니다. 신원 보호용입니다.</value>
-  </data>
-  <data name="TooltipTarget_손" xml:space="preserve">
-    <value>손 부위를 감지하고 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_교미" xml:space="preserve">
-    <value>성적 행위 장면을 감지하고 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_신발" xml:space="preserve">
-    <value>신발을 감지하고 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_가슴_옷" xml:space="preserve">
-    <value>옷을 입은 상태의 가슴 부위를 감지하고 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_여성" xml:space="preserve">
-    <value>여성의 전체적인 모습을 감지하고 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_배꼽" xml:space="preserve">
-    <value>배꼽 부위를 감지하고 검열합니다. (OBB 모델 전용)</value>
-  </data>
-  <data name="TooltipTarget_엉덩이" xml:space="preserve">
-    <value>엉덩이(골반) 부위를 검열합니다.</value>
-  </data>
+  <data name="TooltipTarget_얼굴" xml:space="preserve"><value>사람의 얼굴을 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_여성얼굴" xml:space="preserve"><value>여성의 얼굴을 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_남성얼굴" xml:space="preserve"><value>남성의 얼굴을 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_눈" xml:space="preserve"><value>눈 부위만 따로 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_가슴" xml:space="preserve"><value>노출된 가슴 부위를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_가슴_옷" xml:space="preserve"><value>옷을 입은 가슴 부위를 검열합니다.</value></data>
+  <data name="TooltipTarget_가슴_속옷" xml:space="preserve"><value>속옷(브래지어)을 입은 가슴 부위를 검열합니다.</value></data>
+  <data name="TooltipTarget_옷입은가슴" xml:space="preserve"><value>옷을 입고 있는 가슴 부위를 검열합니다.</value></data>
+  <data name="TooltipTarget_겨드랑이" xml:space="preserve"><value>겨드랑이 부위를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_배꼽" xml:space="preserve"><value>배꼽 부위를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_자지" xml:space="preserve"><value>남성 생식기를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_보지" xml:space="preserve"><value>여성 생식기를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_하체" xml:space="preserve"><value>노출된 하체(맨엉덩이)를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_팬티" xml:space="preserve"><value>속옷(팬티)을 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_옷입은하체" xml:space="preserve"><value>옷이나 속옷을 입은 하체를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_손" xml:space="preserve"><value>손 부위를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_발" xml:space="preserve"><value>발 부위를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_신발" xml:space="preserve"><value>신발을 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_몸 전체" xml:space="preserve"><value>전신 누드를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_항문" xml:space="preserve"><value>항문을 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_성행위" xml:space="preserve"><value>성행위 장면을 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_교미" xml:space="preserve"><value>성행위 장면을 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_엉덩이" xml:space="preserve"><value>엉덩이(골반) 부위를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_여성" xml:space="preserve"><value>여성의 전체적인 모습을 감지하고 검열합니다.</value></data>
 
-  <!-- OBB 전용 검열 대상 -->
-  <data name="Target_여성얼굴" xml:space="preserve">
-    <value>여성 얼굴</value>
-  </data>
-  <data name="Target_남성얼굴" xml:space="preserve">
-    <value>남성 얼굴</value>
-  </data>
-  <data name="Target_가슴_속옷" xml:space="preserve">
-    <value>가슴(속옷)</value>
-  </data>
-  <data name="Target_옷입은가슴" xml:space="preserve">
-    <value>옷 입은 가슴</value>
-  </data>
-  <data name="Target_하체" xml:space="preserve">
-    <value>하체 (맨엉덩이)</value>
-  </data>
-  <data name="Target_옷입은하체" xml:space="preserve">
-    <value>옷 입은 하체</value>
-  </data>
-  <data name="Target_항문" xml:space="preserve">
-    <value>항문</value>
-  </data>
-  <data name="Target_성행위" xml:space="preserve">
-    <value>성행위</value>
-  </data>
-
-  <!-- OBB 전용 타겟 툴팁 -->
-  <data name="TooltipTarget_여성얼굴" xml:space="preserve">
-    <value>여성의 얼굴을 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_남성얼굴" xml:space="preserve">
-    <value>남성의 얼굴을 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_가슴_속옷" xml:space="preserve">
-    <value>속옷(브래지어)을 입은 가슴 부위를 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_옷입은가슴" xml:space="preserve">
-    <value>옷을 입고 있는 가슴 부위를 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_하체" xml:space="preserve">
-    <value>노출된 하체(맨엉덩이)를 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_옷입은하체" xml:space="preserve">
-    <value>옷을 입은 하체를 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_항문" xml:space="preserve">
-    <value>항문을 검열합니다.</value>
-  </data>
-  <data name="TooltipTarget_성행위" xml:space="preserve">
-    <value>성행위 장면을 검열합니다.</value>
-  </data>
-
-  <!-- GPU 상태 번역 -->
   <data name="GPU_CUDA" xml:space="preserve">
     <value>CUDA (NVIDIA GPU 가속)</value>
   </data>
@@ -407,7 +243,6 @@
     <value>CPU (소프트웨어 처리)</value>
   </data>
   
-  <!-- 상태 메시지들 -->
   <data name="StatusReady" xml:space="preserve">
     <value>⭕ 시스템 대기 중</value>
   </data>
