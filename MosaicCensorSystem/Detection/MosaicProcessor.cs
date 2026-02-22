@@ -20,6 +20,7 @@ namespace MosaicCensorSystem.Detection
         public int[] BBox { get; set; } = new int[4];
         public int Width => BBox[2] - BBox[0];
         public int Height => BBox[3] - BBox[1];
+        public float Angle { get; set; } = 0f;
     }
 
     public class MosaicProcessor : IDisposable
@@ -57,6 +58,9 @@ namespace MosaicCensorSystem.Detection
             {16, "몸 전체"}, {17, "보지"}, {18, "교미"}, {19, "여성"}
         };
         private static readonly Dictionary<string, float> NmsThresholds = new() { ["얼굴"] = 0.4f, ["가슴"] = 0.4f, ["보지"] = 0.4f };
+
+        public static readonly string[] HbbClasses = new[] { "얼굴", "가슴", "겨드랑이", "보지", "발", "몸 전체", "자지", "팬티", "눈", "손", "교미", "신발", "가슴_옷", "여성" };
+        public static readonly string[] ObbClasses = new[] { "Face_Female", "Face_Male", "Eyes", "Breast_Nude", "Breast_Underwear", "Breast_Clothed", "Armpit", "Navel", "Penis", "Vulva_Nude", "Butt_Nude", "Panty", "Butt_Clothed", "Hands", "Feet", "Shoes", "Body_Full", "Anus", "Sex_Act", "Hpis" };
 
         public MosaicProcessor(string modelPath)
         {
@@ -239,10 +243,19 @@ namespace MosaicCensorSystem.Detection
                 int x2 = (int)((cx + w / 2 - padX) / scale);
                 int y2 = (int)((cy + h / 2 - padY) / scale);
 
+                float angle = 0f;
+                if (isObbMode)
+                {
+                    // OBB 출력 텐서는 [cx, cy, w, h, cls_0, ..., cls_19, angle] 구조이므로 24번 인덱스가 angle.
+                    int angleIndex = 4 + numClasses;
+                    angle = isTransposed ? output[0, i, angleIndex] : output[0, angleIndex, i];
+                }
+
                 detections.Add(new Detection {
                     ClassName = className,
                     Confidence = maxScore,
-                    BBox = new[] { Math.Max(0, x1), Math.Max(0, y1), Math.Min(originalWidth, x2), Math.Min(originalHeight, y2) }
+                    BBox = new[] { Math.Max(0, x1), Math.Max(0, y1), Math.Min(originalWidth, x2), Math.Min(originalHeight, y2) },
+                    Angle = angle
                 });
             }
             return detections;
