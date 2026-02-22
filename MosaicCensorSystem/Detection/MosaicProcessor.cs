@@ -21,6 +21,11 @@ namespace MosaicCensorSystem.Detection
         public int Width => BBox[2] - BBox[0];
         public int Height => BBox[3] - BBox[1];
         public float Angle { get; set; } = 0f;
+        // OBB 전용: 스케일·패딩 보정된 실제 중심 좌표 및 크기
+        public float CenterX { get; set; }
+        public float CenterY { get; set; }
+        public float ObbWidth { get; set; }
+        public float ObbHeight { get; set; }
     }
 
     public class MosaicProcessor : IDisposable
@@ -55,14 +60,14 @@ namespace MosaicCensorSystem.Detection
             {4, "가슴"}, {5, "가슴_옷"}, {6, "겨드랑이"}, {7, "배꼽"},
             {8, "자지"}, {9, "보지"}, {10, "엉덩이"}, {11, "팬티"},
             {12, "팬티"}, {13, "손"}, {14, "발"}, {15, "신발"},
-            {16, "몸 전체"}, {17, "보지"}, {18, "교미"}, {19, "여성"}
+            {16, "몸 전체"}, {17, "항문"}, {18, "교미"}, {19, "여성"}
         };
         private static readonly Dictionary<string, float> NmsThresholds = new() { ["얼굴"] = 0.4f, ["가슴"] = 0.4f, ["보지"] = 0.4f };
 
         public static readonly string[] HbbClasses = new[] { "얼굴", "가슴", "겨드랑이", "보지", "발", "몸 전체", "자지", "팬티", "눈", "손", "교미", "신발", "가슴_옷", "여성" };
         public static readonly string[] ObbClasses = new[] { "Face_Female", "Face_Male", "Eyes", "Breast_Nude", "Breast_Underwear", "Breast_Clothed", "Armpit", "Navel", "Penis", "Vulva_Nude", "Butt_Nude", "Panty", "Butt_Clothed", "Hands", "Feet", "Shoes", "Body_Full", "Anus", "Sex_Act", "Hpis" };
         // OBB 모델 내부 클래스명(한국어, 중복 제거) - 타겟 체크박스 재구성에 사용
-        public static readonly string[] ObbUniqueTargets = new[] { "얼굴", "눈", "가슴", "가슴_옷", "겨드랑이", "배꼽", "자지", "보지", "엉덩이", "팬티", "손", "발", "신발", "몸 전체", "교미", "여성" };
+        public static readonly string[] ObbUniqueTargets = new[] { "얼굴", "눈", "가슴", "가슴_옷", "겨드랑이", "배꼽", "자지", "보지", "엉덩이", "항문", "팬티", "손", "발", "신발", "몸 전체", "교미", "여성" };
 
         public MosaicProcessor(string modelPath)
         {
@@ -258,7 +263,11 @@ namespace MosaicCensorSystem.Detection
                     ClassName = className,
                     Confidence = maxScore,
                     BBox = new[] { Math.Max(0, x1), Math.Max(0, y1), Math.Min(originalWidth, x2), Math.Min(originalHeight, y2) },
-                    Angle = angle
+                    Angle = angle,
+                    CenterX = (cx - padX) / scale,
+                    CenterY = (cy - padY) / scale,
+                    ObbWidth = w / scale,
+                    ObbHeight = h / scale,
                 });
             }
             return detections;
@@ -296,53 +305,68 @@ namespace MosaicCensorSystem.Detection
         
         public void ApplySingleCensorOptimized(Mat frame, Detection detection)
         {
-            if (detection.Width <= 0 || detection.Height <= 0) return;
+            float cx = detection.CenterX;
+            float cy = detection.CenterY;
+            float ow = detection.ObbWidth;
+            float oh = detection.ObbHeight;
+            if (ow <= 0 || oh <= 0) return;
 
-            float cx = detection.BBox[0] + detection.Width / 2.0f;
-            float cy = detection.BBox[1] + detection.Height / 2.0f;
             float degree = detection.Angle * (180.0f / (float)Math.PI);
+            var center2f = new Point2f(cx, cy);
 
-            var rotatedRect = new RotatedRect(new Point2f(cx, cy), new Size2f(detection.Width, detection.Height), degree);
-            Rect boundingRect = rotatedRect.BoundingRect();
+            // Step 1: 검출 객체가 수평이 되도록 프레임 전체를 회전
+            using var M_fwd = Cv2.GetRotationMatrix2D(center2f, degree, 1.0);
+            using var warped = new Mat();
+            Cv2.WarpAffine(frame, warped, M_fwd, frame.Size());
 
-            int bx = Math.Max(0, boundingRect.X);
-            int by = Math.Max(0, boundingRect.Y);
-            int bw = Math.Min(frame.Width - bx, boundingRect.Width);
-            int bh = Math.Min(frame.Height - by, boundingRect.Height);
-            if (bw <= 0 || bh <= 0) return;
+            // Step 2: 회전된 프레임에서 수평 ROI 추출
+            int rx = Math.Max(0, (int)(cx - ow / 2));
+            int ry = Math.Max(0, (int)(cy - oh / 2));
+            int rw = Math.Min(frame.Width - rx, (int)ow);
+            int rh = Math.Min(frame.Height - ry, (int)oh);
+            if (rw <= 0 || rh <= 0) return;
 
-            // 회전된 다각형 마스크 생성 (바운딩 박스 기준 좌표계)
-            using var mask = new Mat(bh, bw, MatType.CV_8UC1, Scalar.Black);
-            var pts = rotatedRect.Points();
-            var maskPts = pts.Select(p => new Point((int)(p.X - bx), (int)(p.Y - by))).ToArray();
-            Cv2.FillConvexPoly(mask, maskPts, Scalar.White);
-
-            using Mat roi = new Mat(frame, new Rect(bx, by, bw, bh));
-
-            if (currentCensorType == CensorType.Mosaic)
+            // Step 3: 수평 ROI에 검열 효과 적용 (격자 자체가 수평 기준으로 생성됨)
+            using (var roi = new Mat(warped, new Rect(rx, ry, rw, rh)))
             {
-                int w = roi.Width, h = roi.Height;
-                int smallW = Math.Max(1, w / strength), smallH = Math.Max(1, h / strength);
-                using var small = new Mat();
-                using var enlarged = new Mat();
-                Cv2.Resize(roi, small, new OpenCvSharp.Size(smallW, smallH), interpolation: InterpolationFlags.Linear);
-                Cv2.Resize(small, enlarged, new OpenCvSharp.Size(w, h), interpolation: InterpolationFlags.Nearest);
-                enlarged.CopyTo(roi, mask);
+                if (currentCensorType == CensorType.Mosaic)
+                {
+                    int smallW = Math.Max(1, rw / strength);
+                    int smallH = Math.Max(1, rh / strength);
+                    using var small = new Mat();
+                    using var enlarged = new Mat();
+                    Cv2.Resize(roi, small, new OpenCvSharp.Size(smallW, smallH), interpolation: InterpolationFlags.Linear);
+                    Cv2.Resize(small, enlarged, new OpenCvSharp.Size(rw, rh), interpolation: InterpolationFlags.Nearest);
+                    enlarged.CopyTo(roi);
+                }
+                else if (currentCensorType == CensorType.Blur)
+                {
+                    int kernelSize = Math.Max(3, strength + 1);
+                    if (kernelSize % 2 == 0) kernelSize++;
+                    using var blurred = new Mat();
+                    Cv2.GaussianBlur(roi, blurred, new OpenCvSharp.Size(kernelSize, kernelSize), 0);
+                    blurred.CopyTo(roi);
+                }
+                else if (currentCensorType == CensorType.BlackBox)
+                {
+                    var blackColor = roi.Channels() == 4 ? new Scalar(0, 0, 0, 255) : new Scalar(0, 0, 0);
+                    roi.SetTo(blackColor);
+                }
             }
-            else if (currentCensorType == CensorType.Blur)
-            {
-                int kernelSize = Math.Max(3, strength + 1);
-                if (kernelSize % 2 == 0) kernelSize++;
-                using var blurred = new Mat();
-                Cv2.GaussianBlur(roi, blurred, new OpenCvSharp.Size(kernelSize, kernelSize), 0);
-                blurred.CopyTo(roi, mask);
-            }
-            else if (currentCensorType == CensorType.BlackBox)
-            {
-                var blackColor = roi.Channels() == 4 ? new Scalar(0, 0, 0, 255) : new Scalar(0, 0, 0);
-                using var black = new Mat(roi.Size(), roi.Type(), blackColor);
-                black.CopyTo(roi, mask);
-            }
+
+            // Step 4: 검열이 적용된 프레임을 원래 각도로 역회전
+            using var M_inv = Cv2.GetRotationMatrix2D(center2f, -degree, 1.0);
+            using var warpedBack = new Mat();
+            Cv2.WarpAffine(warped, warpedBack, M_inv, frame.Size());
+
+            // Step 5: 원본 프레임 좌표계에서 OBB 다각형 마스크 생성
+            var rotRect = new RotatedRect(center2f, new Size2f(ow, oh), degree);
+            var pts = rotRect.Points().Select(p => new Point((int)p.X, (int)p.Y)).ToArray();
+            using var mask = new Mat(frame.Size(), MatType.CV_8UC1, Scalar.Black);
+            Cv2.FillConvexPoly(mask, pts, Scalar.White);
+
+            // Step 6: 역회전된 결과를 마스크 영역만큼 원본 프레임에 합성
+            warpedBack.CopyTo(frame, mask);
         }
 
         public void SetTargets(List<string> targets) => Targets = targets ?? new List<string>();
