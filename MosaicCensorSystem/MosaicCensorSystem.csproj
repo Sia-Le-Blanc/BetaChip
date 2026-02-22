@@ -35,6 +35,9 @@
     <None Update="Resources\best.onnx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="Resources\bestobb.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
 
     <Content Include="Resources\Stickers\**\*" Condition="Exists('Resources\Stickers')">
       <Link>Stickers\%(RecursiveDir)%(Filename)%(Extension)</Link>

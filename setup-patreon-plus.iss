@@ -3,7 +3,7 @@
 
 #define MyAppName "BetaChip"
 #define MyAppDisplayName "BetaChip - 후원자 플러스용"
-#define MyAppVersion "4.0.0-PatreonPlus"
+#define MyAppVersion "4.1.0-PatreonPlus"
 #define MyAppPublisher "Sia"
 #define MyAppURL "https://github.com/Sia-Le-Blanc/BetaChip"
 #define MyAppExeName "MosaicCensorSystem.exe"

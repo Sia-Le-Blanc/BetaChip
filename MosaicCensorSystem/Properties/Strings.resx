@@ -175,6 +175,23 @@
   <data name="LabelConfidence" xml:space="preserve">
     <value>신뢰도:</value>
   </data>
+  <!-- AI 모델 선택 -->
+  <data name="LabelModelType" xml:space="preserve">
+    <value>AI 모델 선택:</value>
+  </data>
+  <data name="ModelStandard" xml:space="preserve">
+    <value>표준 모델 (빠름)</value>
+  </data>
+  <data name="ModelObb" xml:space="preserve">
+    <value>정밀 모델 (고성능/OBB)</value>
+  </data>
+  <data name="TooltipModelStandard" xml:space="preserve">
+    <value>기본 모자이크 모델입니다. 리소스를 적게 소모합니다.</value>
+  </data>
+  <data name="TooltipModelObb" xml:space="preserve">
+    <value>다양한 각도와 세밀한 타겟을 잡는 고성능 회전 모델입니다.</value>
+  </data>
+
   <data name="LabelExecutionMode" xml:space="preserve">
     <value>실행 모드:</value>
   </data>

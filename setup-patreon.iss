@@ -1,9 +1,9 @@
-; Inno Setup 스크립트 - BetaChip 후원자용 (v4.0.0)
+; Inno Setup 스크립트 - BetaChip 후원자용 (v4.1.0)
 ; GPU 가속 설정 가이드 기능 추가
 
 #define MyAppName "BetaChip"
 #define MyAppDisplayName "BetaChip - 후원자용"
-#define MyAppVersion "4.0.0-Patreon"
+#define MyAppVersion "4.1.0-Patreon"
 #define MyAppPublisher "Sia"
 #define MyAppURL "https://github.com/Sia-Le-Blanc/BetaChip"
 #define MyAppExeName "MosaicCensorSystem.exe"

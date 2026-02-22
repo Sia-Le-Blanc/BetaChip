@@ -175,6 +175,23 @@
   <data name="LabelConfidence" xml:space="preserve">
     <value>Confidence:</value>
   </data>
+  <!-- AI Model Selection -->
+  <data name="LabelModelType" xml:space="preserve">
+    <value>AI Model Type:</value>
+  </data>
+  <data name="ModelStandard" xml:space="preserve">
+    <value>Standard (Fast)</value>
+  </data>
+  <data name="ModelObb" xml:space="preserve">
+    <value>Precision (OBB)</value>
+  </data>
+  <data name="TooltipModelStandard" xml:space="preserve">
+    <value>Standard model. Uses less system resources.</value>
+  </data>
+  <data name="TooltipModelObb" xml:space="preserve">
+    <value>High-performance model for accurate angle detection.</value>
+  </data>
+
   <data name="LabelExecutionMode" xml:space="preserve">
     <value>Execution Mode:</value>
   </data>

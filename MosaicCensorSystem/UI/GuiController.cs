@@ -29,6 +29,7 @@ namespace MosaicCensorSystem.UI
         public event Action<List<string>> TargetsChanged;
         public event Action GpuSetupClicked;
         public event Action<bool> DpiCompatToggled;
+        public event Action<bool> ModelTypeChanged; // true: OBB, false: Standard
 
         private readonly Form rootForm;
         private Label titleLabel;
@@ -49,6 +50,8 @@ namespace MosaicCensorSystem.UI
         private CheckBox enableStickersCheckBox;
         private CheckBox enableCaptionsCheckBox;
         private CheckBox enableDpiCompatCheckBox;
+        private Label modelTypeLabel;
+        private RadioButton standardModelRadio, obbModelRadio;
 
         private ResourceManager resourceManager;
         private string currentGpuStatus = "CPU";
@@ -173,7 +176,7 @@ namespace MosaicCensorSystem.UI
             parent.Controls.Add(controlGroup);
             y += 130;
 
-            settingsGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 470) }; // 높이 약간 조절
+            settingsGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 520) };
             CreateSettingsContent(settingsGroup);
             parent.Controls.Add(settingsGroup);
             y += 480;
@@ -195,6 +198,22 @@ namespace MosaicCensorSystem.UI
         private void CreateSettingsContent(GroupBox settingsGroup)
         {
             int y = 25;
+
+            // AI 모델 선택 (최상단)
+            modelTypeLabel = new Label { Location = new Point(10, y), AutoSize = true };
+            standardModelRadio = new RadioButton { Checked = true, Location = new Point(10, y + 20), AutoSize = true };
+            obbModelRadio = new RadioButton { Location = new Point(230, y + 20), AutoSize = true };
+
+            EventHandler modelTypeHandler = (s, e) =>
+            {
+                if (s is RadioButton rb && rb.Checked)
+                    ModelTypeChanged?.Invoke(obbModelRadio.Checked);
+            };
+            standardModelRadio.CheckedChanged += modelTypeHandler;
+            obbModelRadio.CheckedChanged += modelTypeHandler;
+
+            settingsGroup.Controls.AddRange(new Control[] { modelTypeLabel, standardModelRadio, obbModelRadio });
+            y += 50;
 
             var fpsValueLabel = new Label { Text = "15", Location = new Point(390, y), AutoSize = true };
             fpsSlider = new TrackBar
@@ -329,6 +348,9 @@ namespace MosaicCensorSystem.UI
                 if (enableStickersCheckBox != null) enableStickersCheckBox.Text = GetLocalizedString("LabelStickers");
                 if (enableCaptionsCheckBox != null) enableCaptionsCheckBox.Text = GetLocalizedString("LabelCaptions");
                 if (enableDpiCompatCheckBox != null) enableDpiCompatCheckBox.Text = GetLocalizedString("LabelDpiCompat") ?? "자동 화면 배율 해제";
+                if (modelTypeLabel != null) modelTypeLabel.Text = GetLocalizedString("LabelModelType");
+                if (standardModelRadio != null) standardModelRadio.Text = GetLocalizedString("ModelStandard");
+                if (obbModelRadio != null) obbModelRadio.Text = GetLocalizedString("ModelObb");
 
                 mosaicRadioButton.Text = GetLocalizedString("LabelCensorTypeMosaic");
                 blurRadioButton.Text = GetLocalizedString("LabelCensorTypeBlur");
@@ -378,6 +400,8 @@ namespace MosaicCensorSystem.UI
                 if (enableStickersCheckBox != null) toolTip.SetToolTip(enableStickersCheckBox, GetLocalizedString("TooltipStickers"));
                 if (enableCaptionsCheckBox != null) toolTip.SetToolTip(enableCaptionsCheckBox, GetLocalizedString("TooltipCaptions"));
                 if (enableDpiCompatCheckBox != null) toolTip.SetToolTip(enableDpiCompatCheckBox, GetLocalizedString("TooltipDpiCompat"));
+                if (standardModelRadio != null) toolTip.SetToolTip(standardModelRadio, GetLocalizedString("TooltipModelStandard"));
+                if (obbModelRadio != null) toolTip.SetToolTip(obbModelRadio, GetLocalizedString("TooltipModelObb"));
                 toolTip.SetToolTip(mosaicRadioButton, GetLocalizedString("TooltipMosaic"));
                 toolTip.SetToolTip(blurRadioButton, GetLocalizedString("TooltipBlur"));
                 toolTip.SetToolTip(blackBoxRadioButton, GetLocalizedString("TooltipBlackBox"));

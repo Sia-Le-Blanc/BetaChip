@@ -9,7 +9,8 @@ namespace MosaicCensorSystem
 {
     internal static class Program
     {
-        public static readonly string? ONNX_MODEL_PATH = GetModelPath();
+        public static readonly string? STANDARD_MODEL_PATH = GetModelPath("best.onnx");
+        public static readonly string? OBB_MODEL_PATH = GetModelPath("bestobb.onnx");
 
         [STAThread]
         static void Main(string[] args)
@@ -55,9 +56,14 @@ namespace MosaicCensorSystem
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
 
             // 5. 모델 파일 확인
-            if (string.IsNullOrEmpty(ONNX_MODEL_PATH))
+            if (string.IsNullOrEmpty(STANDARD_MODEL_PATH))
             {
-                ShowModelNotFoundError();
+                ShowModelNotFoundError("best.onnx");
+                return;
+            }
+            if (string.IsNullOrEmpty(OBB_MODEL_PATH))
+            {
+                ShowModelNotFoundError("bestobb.onnx");
                 return;
             }
 
@@ -130,13 +136,13 @@ namespace MosaicCensorSystem
             }
         }
 
-        private static void ShowModelNotFoundError()
+        private static void ShowModelNotFoundError(string modelFileName)
         {
             MessageBox.Show(
-                "핵심 AI 모델 파일(best.onnx)을 찾을 수 없습니다.\n\n" +
+                $"핵심 AI 모델 파일({modelFileName})을 찾을 수 없습니다.\n\n" +
                 "다음을 확인해주세요:\n" +
                 "1. 프로그램이 올바르게 설치되었는지\n" +
-                "2. Resources 폴더에 best.onnx 파일이 있는지\n" +
+                $"2. Resources 폴더에 {modelFileName} 파일이 있는지\n" +
                 "3. 바이러스 백신이 파일을 차단하지 않았는지\n\n" +
                 "문제가 지속되면 프로그램을 재설치해주세요.",
                 "모델 파일 없음",
@@ -165,10 +171,8 @@ namespace MosaicCensorSystem
             MessageBox.Show(errorDetails, "초기화 오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
-        private static string? GetModelPath()
+        private static string? GetModelPath(string modelFileName)
         {
-            const string modelFileName = "best.onnx";
-
             // 1. 레지스트리에서 찾기 (최우선)
             string? registryPath = GetPathFromRegistry("ModelPath");
             if (!string.IsNullOrEmpty(registryPath))
