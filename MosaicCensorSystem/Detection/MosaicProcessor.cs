@@ -25,6 +25,8 @@ namespace MosaicCensorSystem.Detection
     public class MosaicProcessor : IDisposable
     {
         private InferenceSession model;
+        private readonly object _lockObj = new object();
+        private bool isObbMode = false;
         private readonly float[] inputBuffer = new float[1 * 3 * 640 * 640];
         private readonly SortTracker tracker = new SortTracker();
 
@@ -44,6 +46,14 @@ namespace MosaicCensorSystem.Detection
             {0, "얼굴"}, {1, "가슴"}, {2, "겨드랑이"}, {3, "보지"}, {4, "발"},
             {5, "몸 전체"}, {6, "자지"}, {7, "팬티"}, {8, "눈"}, {9, "손"},
             {10, "교미"}, {11, "신발"}, {12, "가슴_옷"}, {13, "여성"}
+        };
+        private static readonly Dictionary<int, string> ClassNamesObb = new()
+        {
+            {0, "얼굴"}, {1, "얼굴"}, {2, "눈"}, {3, "가슴"},
+            {4, "가슴"}, {5, "가슴_옷"}, {6, "겨드랑이"}, {7, "배꼽"},
+            {8, "자지"}, {9, "보지"}, {10, "엉덩이"}, {11, "팬티"},
+            {12, "팬티"}, {13, "손"}, {14, "발"}, {15, "신발"},
+            {16, "몸 전체"}, {17, "보지"}, {18, "교미"}, {19, "여성"}
         };
         private static readonly Dictionary<string, float> NmsThresholds = new() { ["얼굴"] = 0.4f, ["가슴"] = 0.4f, ["보지"] = 0.4f };
 
@@ -102,40 +112,58 @@ namespace MosaicCensorSystem.Detection
 
         public bool IsModelLoaded() => model != null;
 
+        public bool SwitchModel(string modelPath, bool obbMode)
+        {
+            lock (_lockObj)
+            {
+                if (model != null)
+                {
+                    model.Dispose();
+                    model = null;
+                }
+                isObbMode = obbMode;
+                LoadModel(modelPath);
+                return IsModelLoaded();
+            }
+        }
+
         public List<Detection> DetectObjects(Mat frame)
         {
             if (!IsModelLoaded() || frame == null || frame.Empty()) return new List<Detection>();
             try
             {
-                var (scale, padX, padY) = Preprocess(frame, inputBuffer);
-                var inputTensor = new DenseTensor<float>(inputBuffer, new[] { 1, 3, 640, 640 });
-                var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("images", inputTensor) };
-                using var results = model.Run(inputs);
-                var outputTensor = results.First().AsTensor<float>();
-                var detections = Postprocess(outputTensor, scale, padX, padY, frame.Width, frame.Height);
-                var nmsDetections = ApplyNMS(detections);
-
-                var trackBoxes = nmsDetections.Select(d => new Rect2d(d.BBox[0], d.BBox[1], d.Width, d.Height)).ToList();
-                var trackedResults = tracker.Update(trackBoxes);
-
-                var finalDetections = new List<Detection>();
-                var remainingDetections = new List<Detection>(nmsDetections);
-
-                foreach (var track in trackedResults)
+                lock (_lockObj)
                 {
-                    var bestMatch = remainingDetections
-                        .Select(det => new { Detection = det, Distance = new Rect2d(det.BBox[0], det.BBox[1], det.Width, det.Height).DistanceTo(track.box) })
-                        .OrderBy(x => x.Distance)
-                        .FirstOrDefault();
+                    var (scale, padX, padY) = Preprocess(frame, inputBuffer);
+                    var inputTensor = new DenseTensor<float>(inputBuffer, new[] { 1, 3, 640, 640 });
+                    var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("images", inputTensor) };
+                    using var results = model.Run(inputs);
+                    var outputTensor = results.First().AsTensor<float>();
+                    var detections = Postprocess(outputTensor, scale, padX, padY, frame.Width, frame.Height);
+                    var nmsDetections = ApplyNMS(detections);
 
-                    if (bestMatch != null && bestMatch.Distance < 50)
+                    var trackBoxes = nmsDetections.Select(d => new Rect2d(d.BBox[0], d.BBox[1], d.Width, d.Height)).ToList();
+                    var trackedResults = tracker.Update(trackBoxes);
+
+                    var finalDetections = new List<Detection>();
+                    var remainingDetections = new List<Detection>(nmsDetections);
+
+                    foreach (var track in trackedResults)
                     {
-                        bestMatch.Detection.TrackId = track.id;
-                        finalDetections.Add(bestMatch.Detection);
-                        remainingDetections.Remove(bestMatch.Detection);
+                        var bestMatch = remainingDetections
+                            .Select(det => new { Detection = det, Distance = new Rect2d(det.BBox[0], det.BBox[1], det.Width, det.Height).DistanceTo(track.box) })
+                            .OrderBy(x => x.Distance)
+                            .FirstOrDefault();
+
+                        if (bestMatch != null && bestMatch.Distance < 50)
+                        {
+                            bestMatch.Detection.TrackId = track.id;
+                            finalDetections.Add(bestMatch.Detection);
+                            remainingDetections.Remove(bestMatch.Detection);
+                        }
                     }
+                    return finalDetections;
                 }
-                return finalDetections;
             }
             catch (Exception ex) { Console.WriteLine($"🚨 DetectObjects 오류: {ex.Message}"); return new List<Detection>(); }
         }
@@ -169,11 +197,14 @@ namespace MosaicCensorSystem.Detection
             {
                 float maxScore = 0;
                 int maxClassId = -1;
-                for (int c = 0; c < 14; c++) { float score = output[0, 4 + c, i]; if (score > maxScore) { maxScore = score; maxClassId = c; } }
+                int numClasses = isObbMode ? 20 : 14;
+                for (int c = 0; c < numClasses; c++) { float score = output[0, 4 + c, i]; if (score > maxScore) { maxScore = score; maxClassId = c; } }
 
                 if (maxScore <= ConfThreshold) continue;
 
-                string className = ClassNames.GetValueOrDefault(maxClassId);
+                string className = isObbMode
+                    ? ClassNamesObb.GetValueOrDefault(maxClassId)
+                    : ClassNames.GetValueOrDefault(maxClassId);
                 if (className == null || !Targets.Contains(className)) continue;
                 
                 float cx = output[0, 0, i]; float cy = output[0, 1, i]; float w = output[0, 2, i]; float h = output[0, 3, i];

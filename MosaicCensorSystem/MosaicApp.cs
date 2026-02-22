@@ -88,6 +88,16 @@ namespace MosaicCensorSystem
                 using var gpuForm = new UI.GpuSetupForm(gpuResult);
                 gpuForm.ShowDialog();
             };
+            uiController.ModelTypeChanged += (isObb) =>
+            {
+                string newModelPath = isObb ? Program.OBB_MODEL_PATH : Program.STANDARD_MODEL_PATH;
+                uiController.LogMessage($"🔄 모델 교체 중... ({(isObb ? "OBB 정밀 모델" : "표준 모델")})");
+
+                bool success = censorService.Processor.SwitchModel(newModelPath, isObb);
+
+                if (success) uiController.LogMessage("✅ 모델 교체 완료!");
+                else uiController.LogMessage("❌ 모델 교체 실패! 경로를 확인하세요.");
+            };
         }
 
         public void Run()

@@ -28,7 +28,7 @@ namespace MosaicCensorSystem.Diagnostics
                 Console.WriteLine($"✅ 사용 가능한 제공자: {string.Join(", ", providers)}");
 
                 // 3. 모델 파일 존재 여부 확인
-                var modelPath = Program.ONNX_MODEL_PATH; // Program.cs에서 찾은 경로 활용
+                var modelPath = Program.STANDARD_MODEL_PATH; // Program.cs에서 찾은 경로 활용
                 if (File.Exists(modelPath))
                 {
                     Console.WriteLine($"✅ 모델 파일 발견: {modelPath}");
