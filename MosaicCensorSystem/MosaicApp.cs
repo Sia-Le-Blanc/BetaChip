@@ -6,6 +6,7 @@ using System.Threading.Tasks; // 추가됨
 using MosaicCensorSystem.UI;
 using MosaicCensorSystem.Services; // 추가됨
 using MosaicCensorSystem.Models;   // 추가됨
+using MosaicCensorSystem.Detection; // 추가됨
 
 namespace MosaicCensorSystem
 {
@@ -95,7 +96,12 @@ namespace MosaicCensorSystem
 
                 bool success = censorService.Processor.SwitchModel(newModelPath, isObb);
 
-                if (success) uiController.LogMessage("✅ 모델 교체 완료!");
+                if (success)
+                {
+                    uiController.LogMessage("✅ 모델 교체 완료!");
+                    string[] targets = isObb ? MosaicProcessor.ObbUniqueTargets : MosaicProcessor.HbbClasses;
+                    uiController.RebuildTargetCheckboxes(targets);
+                }
                 else uiController.LogMessage("❌ 모델 교체 실패! 경로를 확인하세요.");
             };
         }

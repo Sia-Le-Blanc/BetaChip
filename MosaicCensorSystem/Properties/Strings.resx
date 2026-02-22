@@ -287,7 +287,13 @@
   <data name="Target_여성" xml:space="preserve">
     <value>여성</value>
   </data>
-  
+  <data name="Target_배꼽" xml:space="preserve">
+    <value>배꼽</value>
+  </data>
+  <data name="Target_엉덩이" xml:space="preserve">
+    <value>엉덩이</value>
+  </data>
+
   <!-- 타겟 체크박스 툴팁 -->
   <data name="TooltipTarget_얼굴" xml:space="preserve">
     <value>사람의 얼굴을 감지하고 검열합니다. 가장 기본적인 검열 대상입니다.</value>
@@ -331,7 +337,13 @@
   <data name="TooltipTarget_여성" xml:space="preserve">
     <value>여성의 전체적인 모습을 감지하고 검열합니다.</value>
   </data>
-  
+  <data name="TooltipTarget_배꼽" xml:space="preserve">
+    <value>배꼽 부위를 감지하고 검열합니다. (OBB 모델 전용)</value>
+  </data>
+  <data name="TooltipTarget_엉덩이" xml:space="preserve">
+    <value>엉덩이 부위를 감지하고 검열합니다. (OBB 모델 전용)</value>
+  </data>
+
   <!-- GPU 상태 번역 -->
   <data name="GPU_CUDA" xml:space="preserve">
     <value>CUDA (NVIDIA GPU 가속)</value>

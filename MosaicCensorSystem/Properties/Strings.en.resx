@@ -287,7 +287,13 @@
   <data name="Target_여성" xml:space="preserve">
     <value>Female</value>
   </data>
-  
+  <data name="Target_배꼽" xml:space="preserve">
+    <value>Navel</value>
+  </data>
+  <data name="Target_엉덩이" xml:space="preserve">
+    <value>Butt</value>
+  </data>
+
   <!-- Target Checkbox Tooltips -->
   <data name="TooltipTarget_얼굴" xml:space="preserve">
     <value>Detect and censor human faces. Most basic censoring target.</value>
@@ -331,7 +337,13 @@
   <data name="TooltipTarget_여성" xml:space="preserve">
     <value>Detect and censor overall female appearance.</value>
   </data>
-  
+  <data name="TooltipTarget_배꼽" xml:space="preserve">
+    <value>Detect and censor navel area. (OBB model only)</value>
+  </data>
+  <data name="TooltipTarget_엉덩이" xml:space="preserve">
+    <value>Detect and censor buttock area. (OBB model only)</value>
+  </data>
+
   <!-- GPU Status Translations -->
   <data name="GPU_CUDA" xml:space="preserve">
     <value>CUDA (NVIDIA GPU Accelerated)</value>

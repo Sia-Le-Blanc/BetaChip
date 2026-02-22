@@ -429,6 +429,56 @@ namespace MosaicCensorSystem.UI
             TargetsChanged?.Invoke(selected);
         }
 
+        public void RebuildTargetCheckboxes(string[] availableTargets)
+        {
+            if (rootForm.InvokeRequired) { rootForm.Invoke(new Action(() => RebuildTargetCheckboxes(availableTargets))); return; }
+            if (availableTargets == null || availableTargets.Length == 0) return;
+
+            // 현재 선택된 타겟 기억
+            var previouslySelected = targetCheckBoxes
+                .Where(kvp => kvp.Value.Checked)
+                .Select(kvp => kvp.Key)
+                .ToHashSet();
+
+            // 기존 체크박스 제거
+            foreach (var cb in targetCheckBoxes.Values)
+            {
+                targetsGroup.Controls.Remove(cb);
+                cb.Dispose();
+            }
+            targetCheckBoxes.Clear();
+
+            // 이전 선택과 새 목록의 교집합이 없으면 기본 타겟 사용
+            var defaultTargets = new[] { "얼굴", "가슴", "보지", "팬티" };
+            bool useDefault = !previouslySelected.Any(t => availableTargets.Contains(t));
+
+            // 새 체크박스 생성
+            for (int i = 0; i < availableTargets.Length; i++)
+            {
+                string target = availableTargets[i];
+                bool isChecked = useDefault ? defaultTargets.Contains(target) : previouslySelected.Contains(target);
+
+                var checkbox = new CheckBox
+                {
+                    Text = target,
+                    Checked = isChecked,
+                    Location = new Point(15 + (i % 3) * 140, 25 + (i / 3) * 20),
+                    AutoSize = true,
+                    Tag = target
+                };
+                checkbox.CheckedChanged += OnTargetChanged;
+                targetCheckBoxes[target] = checkbox;
+                targetsGroup.Controls.Add(checkbox);
+            }
+
+            // GroupBox 높이 조정
+            int numRows = (availableTargets.Length + 2) / 3;
+            targetsGroup.Size = new Size(440, 30 + numRows * 20 + 15);
+
+            UpdateUIText();
+            OnTargetChanged(null, EventArgs.Empty);
+        }
+
         public void UpdateStatus(string message, Color color)
         {
             if (disposed) return;

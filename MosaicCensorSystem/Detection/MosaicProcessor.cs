@@ -61,6 +61,8 @@ namespace MosaicCensorSystem.Detection
 
         public static readonly string[] HbbClasses = new[] { "얼굴", "가슴", "겨드랑이", "보지", "발", "몸 전체", "자지", "팬티", "눈", "손", "교미", "신발", "가슴_옷", "여성" };
         public static readonly string[] ObbClasses = new[] { "Face_Female", "Face_Male", "Eyes", "Breast_Nude", "Breast_Underwear", "Breast_Clothed", "Armpit", "Navel", "Penis", "Vulva_Nude", "Butt_Nude", "Panty", "Butt_Clothed", "Hands", "Feet", "Shoes", "Body_Full", "Anus", "Sex_Act", "Hpis" };
+        // OBB 모델 내부 클래스명(한국어, 중복 제거) - 타겟 체크박스 재구성에 사용
+        public static readonly string[] ObbUniqueTargets = new[] { "얼굴", "눈", "가슴", "가슴_옷", "겨드랑이", "배꼽", "자지", "보지", "엉덩이", "팬티", "손", "발", "신발", "몸 전체", "교미", "여성" };
 
         public MosaicProcessor(string modelPath)
         {
@@ -139,6 +141,7 @@ namespace MosaicCensorSystem.Detection
             {
                 lock (_lockObj)
                 {
+                    if (model == null) return new List<Detection>();
                     var (scale, padX, padY) = Preprocess(frame, inputBuffer);
                     var inputTensor = new DenseTensor<float>(inputBuffer, new[] { 1, 3, 640, 640 });
                     var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("images", inputTensor) };
@@ -294,33 +297,51 @@ namespace MosaicCensorSystem.Detection
         public void ApplySingleCensorOptimized(Mat frame, Detection detection)
         {
             if (detection.Width <= 0 || detection.Height <= 0) return;
-            Rect roi = new Rect(detection.BBox[0], detection.BBox[1], detection.Width, detection.Height);
-            using Mat region = new Mat(frame, roi);
-            
+
+            float cx = detection.BBox[0] + detection.Width / 2.0f;
+            float cy = detection.BBox[1] + detection.Height / 2.0f;
+            float degree = detection.Angle * (180.0f / (float)Math.PI);
+
+            var rotatedRect = new RotatedRect(new Point2f(cx, cy), new Size2f(detection.Width, detection.Height), degree);
+            Rect boundingRect = rotatedRect.BoundingRect();
+
+            int bx = Math.Max(0, boundingRect.X);
+            int by = Math.Max(0, boundingRect.Y);
+            int bw = Math.Min(frame.Width - bx, boundingRect.Width);
+            int bh = Math.Min(frame.Height - by, boundingRect.Height);
+            if (bw <= 0 || bh <= 0) return;
+
+            // 회전된 다각형 마스크 생성 (바운딩 박스 기준 좌표계)
+            using var mask = new Mat(bh, bw, MatType.CV_8UC1, Scalar.Black);
+            var pts = rotatedRect.Points();
+            var maskPts = pts.Select(p => new Point((int)(p.X - bx), (int)(p.Y - by))).ToArray();
+            Cv2.FillConvexPoly(mask, maskPts, Scalar.White);
+
+            using Mat roi = new Mat(frame, new Rect(bx, by, bw, bh));
+
             if (currentCensorType == CensorType.Mosaic)
             {
-                int w = region.Width, h = region.Height; 
+                int w = roi.Width, h = roi.Height;
                 int smallW = Math.Max(1, w / strength), smallH = Math.Max(1, h / strength);
-                using Mat small = new Mat();
-                Cv2.Resize(region, small, new OpenCvSharp.Size(smallW, smallH), interpolation: InterpolationFlags.Linear);
-                Cv2.Resize(small, region, new OpenCvSharp.Size(w, h), interpolation: InterpolationFlags.Nearest);
+                using var small = new Mat();
+                using var enlarged = new Mat();
+                Cv2.Resize(roi, small, new OpenCvSharp.Size(smallW, smallH), interpolation: InterpolationFlags.Linear);
+                Cv2.Resize(small, enlarged, new OpenCvSharp.Size(w, h), interpolation: InterpolationFlags.Nearest);
+                enlarged.CopyTo(roi, mask);
             }
             else if (currentCensorType == CensorType.Blur)
-            { 
-                int kernelSize = Math.Max(3, strength + 1); 
-                if (kernelSize % 2 == 0) kernelSize++; 
-                Cv2.GaussianBlur(region, region, new OpenCvSharp.Size(kernelSize, kernelSize), 0); 
+            {
+                int kernelSize = Math.Max(3, strength + 1);
+                if (kernelSize % 2 == 0) kernelSize++;
+                using var blurred = new Mat();
+                Cv2.GaussianBlur(roi, blurred, new OpenCvSharp.Size(kernelSize, kernelSize), 0);
+                blurred.CopyTo(roi, mask);
             }
             else if (currentCensorType == CensorType.BlackBox)
             {
-                if (region.Channels() == 4)
-                {
-                    region.SetTo(new Scalar(0, 0, 0, 255));
-                }
-                else
-                {
-                    region.SetTo(new Scalar(0, 0, 0));
-                }
+                var blackColor = roi.Channels() == 4 ? new Scalar(0, 0, 0, 255) : new Scalar(0, 0, 0);
+                using var black = new Mat(roi.Size(), roi.Type(), blackColor);
+                black.CopyTo(roi, mask);
             }
         }
 
@@ -333,13 +354,17 @@ namespace MosaicCensorSystem.Detection
             if (!IsModelLoaded()) return;
             try
             {
-                Console.WriteLine("🔥 모델 워밍업 시작...");
-                var dummyInput = new DenseTensor<float>(new float[1 * 3 * 640 * 640], new[] { 1, 3, 640, 640 });
-                var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("images", dummyInput) };
-                
-                using (model.Run(inputs)) { }
+                lock (_lockObj)
+                {
+                    if (model == null) return;
+                    Console.WriteLine("🔥 모델 워밍업 시작...");
+                    var dummyInput = new DenseTensor<float>(new float[1 * 3 * 640 * 640], new[] { 1, 3, 640, 640 });
+                    var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("images", dummyInput) };
 
-                Console.WriteLine("✅ 모델 워밍업 완료.");
+                    using (model.Run(inputs)) { }
+
+                    Console.WriteLine("✅ 모델 워밍업 완료.");
+                }
             }
             catch (Exception ex)
             {
