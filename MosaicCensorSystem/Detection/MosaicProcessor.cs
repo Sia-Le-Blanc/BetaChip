@@ -34,6 +34,7 @@ namespace MosaicCensorSystem.Detection
         private Mat _paddedMat = new Mat();
         private Mat[] _channels = new Mat[3];
 
+        public Action<string> LogCallback { get; set; }
         public float ConfThreshold { get; set; } = 0.3f;
         public List<string> Targets { get; private set; } = new List<string> { "얼굴", "가슴" };
         private CensorType currentCensorType = CensorType.Mosaic;
@@ -165,7 +166,7 @@ namespace MosaicCensorSystem.Detection
                     return finalDetections;
                 }
             }
-            catch (Exception ex) { Console.WriteLine($"🚨 DetectObjects 오류: {ex.Message}"); return new List<Detection>(); }
+            catch (Exception ex) { LogCallback?.Invoke($"🚨 추론 에러: {ex.Message}"); return new List<Detection>(); }
         }
 
         private (float scale, int padX, int padY) Preprocess(Mat frame, float[] buffer)
@@ -193,25 +194,56 @@ namespace MosaicCensorSystem.Detection
         private List<Detection> Postprocess(Tensor<float> output, float scale, int padX, int padY, int originalWidth, int originalHeight)
         {
             var detections = new List<Detection>();
-            for (int i = 0; i < 8400; i++)
+            var dims = output.Dimensions;
+
+            // 차원 구조에 따른 자동 대응 로직
+            bool isTransposed = dims.Length == 3 && dims[1] > dims[2]; // 예: [1, 8400, 25] 형태인 경우
+            int numAnchors = isTransposed ? dims[1] : dims[2]; // 8400
+            int numFeatures = isTransposed ? dims[2] : dims[1]; // 18 or 25
+
+            int numClasses = isObbMode ? 20 : 14;
+
+            for (int i = 0; i < numAnchors; i++)
             {
                 float maxScore = 0;
                 int maxClassId = -1;
-                int numClasses = isObbMode ? 20 : 14;
-                for (int c = 0; c < numClasses; c++) { float score = output[0, 4 + c, i]; if (score > maxScore) { maxScore = score; maxClassId = c; } }
 
-                if (maxScore <= ConfThreshold) continue;
+                for (int c = 0; c < numClasses; c++)
+                {
+                    // 배열 인덱스 초과 방지 안전장치
+                    if (4 + c >= numFeatures) break;
+
+                    float score = isTransposed ? output[0, i, 4 + c] : output[0, 4 + c, i];
+                    if (score > maxScore)
+                    {
+                        maxScore = score;
+                        maxClassId = c;
+                    }
+                }
+
+                if (maxScore <= ConfThreshold || maxClassId == -1) continue;
 
                 string className = isObbMode
                     ? ClassNamesObb.GetValueOrDefault(maxClassId)
                     : ClassNames.GetValueOrDefault(maxClassId);
-                if (className == null || !Targets.Contains(className)) continue;
-                
-                float cx = output[0, 0, i]; float cy = output[0, 1, i]; float w = output[0, 2, i]; float h = output[0, 3, i];
-                int x1 = (int)((cx - w / 2 - padX) / scale); int y1 = (int)((cy - h / 2 - padY) / scale);
-                int x2 = (int)((cx + w / 2 - padX) / scale); int y2 = (int)((cy + h / 2 - padY) / scale);
 
-                detections.Add(new Detection { ClassName = className, Confidence = maxScore, BBox = new[] { Math.Max(0, x1), Math.Max(0, y1), Math.Min(originalWidth, x2), Math.Min(originalHeight, y2) } });
+                if (className == null || !Targets.Contains(className)) continue;
+
+                float cx = isTransposed ? output[0, i, 0] : output[0, 0, i];
+                float cy = isTransposed ? output[0, i, 1] : output[0, 1, i];
+                float w  = isTransposed ? output[0, i, 2] : output[0, 2, i];
+                float h  = isTransposed ? output[0, i, 3] : output[0, 3, i];
+
+                int x1 = (int)((cx - w / 2 - padX) / scale);
+                int y1 = (int)((cy - h / 2 - padY) / scale);
+                int x2 = (int)((cx + w / 2 - padX) / scale);
+                int y2 = (int)((cy + h / 2 - padY) / scale);
+
+                detections.Add(new Detection {
+                    ClassName = className,
+                    Confidence = maxScore,
+                    BBox = new[] { Math.Max(0, x1), Math.Max(0, y1), Math.Min(originalWidth, x2), Math.Min(originalHeight, y2) }
+                });
             }
             return detections;
         }

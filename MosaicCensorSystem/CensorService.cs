@@ -54,6 +54,7 @@ namespace MosaicCensorSystem
             _subInfo = subInfo; // 등급 정보 주입받음
             capturer = new ScreenCapture();
             processor = new MosaicProcessor(Program.STANDARD_MODEL_PATH);
+            processor.LogCallback = ui.LogMessage;
 
             // 등급에 따라 매니저 결정 (Patreon 이상이면 멀티모니터)
             if (_subInfo.Tier == "plus" || _subInfo.Tier == "patreon")
