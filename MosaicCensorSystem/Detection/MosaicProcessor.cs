@@ -208,7 +208,7 @@ namespace MosaicCensorSystem.Detection
             int numAnchors = isTransposed ? dims[1] : dims[2]; // 8400
             int numFeatures = isTransposed ? dims[2] : dims[1]; // 18 or 25
 
-            int numClasses = isObbMode ? 20 : 14;
+            int numClasses = isObbMode ? numFeatures - 5 : numFeatures - 4;
 
             for (int i = 0; i < numAnchors; i++)
             {
@@ -249,8 +249,8 @@ namespace MosaicCensorSystem.Detection
                 float angle = 0f;
                 if (isObbMode)
                 {
-                    // OBB 출력 텐서는 [cx, cy, w, h, cls_0, ..., cls_19, angle] 구조이므로 24번 인덱스가 angle.
-                    int angleIndex = 4 + numClasses;
+                    // OBB 출력 텐서는 [cx, cy, w, h, cls_0, ..., cls_N, angle] 구조이므로 마지막 인덱스가 angle.
+                    int angleIndex = numFeatures - 1;
                     angle = isTransposed ? output[0, i, angleIndex] : output[0, angleIndex, i];
                 }
 
