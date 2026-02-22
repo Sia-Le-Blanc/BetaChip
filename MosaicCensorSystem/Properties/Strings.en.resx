@@ -291,7 +291,7 @@
     <value>Navel</value>
   </data>
   <data name="Target_엉덩이" xml:space="preserve">
-    <value>Butt</value>
+    <value>Hips</value>
   </data>
 
   <!-- Target Checkbox Tooltips -->
@@ -341,7 +341,59 @@
     <value>Detect and censor navel area. (OBB model only)</value>
   </data>
   <data name="TooltipTarget_엉덩이" xml:space="preserve">
-    <value>Detect and censor buttock area. (OBB model only)</value>
+    <value>Detect and censor hips.</value>
+  </data>
+
+  <!-- OBB-Exclusive Censoring Targets -->
+  <data name="Target_여성얼굴" xml:space="preserve">
+    <value>Female Face</value>
+  </data>
+  <data name="Target_남성얼굴" xml:space="preserve">
+    <value>Male Face</value>
+  </data>
+  <data name="Target_가슴_속옷" xml:space="preserve">
+    <value>Bra</value>
+  </data>
+  <data name="Target_옷입은가슴" xml:space="preserve">
+    <value>Clothed Breasts</value>
+  </data>
+  <data name="Target_하체" xml:space="preserve">
+    <value>Lower Body (Bare)</value>
+  </data>
+  <data name="Target_옷입은하체" xml:space="preserve">
+    <value>Clothed Lower Body</value>
+  </data>
+  <data name="Target_항문" xml:space="preserve">
+    <value>Anus</value>
+  </data>
+  <data name="Target_성행위" xml:space="preserve">
+    <value>Sex Act</value>
+  </data>
+
+  <!-- OBB-Exclusive Target Tooltips -->
+  <data name="TooltipTarget_여성얼굴" xml:space="preserve">
+    <value>Detect and censor female faces.</value>
+  </data>
+  <data name="TooltipTarget_남성얼굴" xml:space="preserve">
+    <value>Detect and censor male faces.</value>
+  </data>
+  <data name="TooltipTarget_가슴_속옷" xml:space="preserve">
+    <value>Detect and censor breasts in underwear.</value>
+  </data>
+  <data name="TooltipTarget_옷입은가슴" xml:space="preserve">
+    <value>Detect and censor clothed breasts.</value>
+  </data>
+  <data name="TooltipTarget_하체" xml:space="preserve">
+    <value>Detect and censor bare lower body.</value>
+  </data>
+  <data name="TooltipTarget_옷입은하체" xml:space="preserve">
+    <value>Detect and censor clothed lower body.</value>
+  </data>
+  <data name="TooltipTarget_항문" xml:space="preserve">
+    <value>Detect and censor anus.</value>
+  </data>
+  <data name="TooltipTarget_성행위" xml:space="preserve">
+    <value>Detect and censor sex acts.</value>
   </data>
 
   <!-- GPU Status Translations -->

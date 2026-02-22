@@ -56,18 +56,23 @@ namespace MosaicCensorSystem.Detection
         };
         private static readonly Dictionary<int, string> ClassNamesObb = new()
         {
-            {0, "얼굴"}, {1, "얼굴"}, {2, "눈"}, {3, "가슴"},
-            {4, "가슴"}, {5, "가슴_옷"}, {6, "겨드랑이"}, {7, "배꼽"},
-            {8, "자지"}, {9, "보지"}, {10, "엉덩이"}, {11, "팬티"},
-            {12, "팬티"}, {13, "손"}, {14, "발"}, {15, "신발"},
-            {16, "몸 전체"}, {17, "항문"}, {18, "교미"}, {19, "여성"}
+            {0, "여성얼굴"}, {1, "남성얼굴"}, {2, "눈"}, {3, "가슴"},
+            {4, "가슴_속옷"}, {5, "옷입은가슴"}, {6, "겨드랑이"}, {7, "배꼽"},
+            {8, "자지"}, {9, "보지"}, {10, "하체"}, {11, "팬티"},
+            {12, "옷입은하체"}, {13, "손"}, {14, "발"}, {15, "신발"},
+            {16, "몸 전체"}, {17, "항문"}, {18, "성행위"}, {19, "엉덩이"}
         };
         private static readonly Dictionary<string, float> NmsThresholds = new() { ["얼굴"] = 0.4f, ["가슴"] = 0.4f, ["보지"] = 0.4f };
 
         public static readonly string[] HbbClasses = new[] { "얼굴", "가슴", "겨드랑이", "보지", "발", "몸 전체", "자지", "팬티", "눈", "손", "교미", "신발", "가슴_옷", "여성" };
         public static readonly string[] ObbClasses = new[] { "Face_Female", "Face_Male", "Eyes", "Breast_Nude", "Breast_Underwear", "Breast_Clothed", "Armpit", "Navel", "Penis", "Vulva_Nude", "Butt_Nude", "Panty", "Butt_Clothed", "Hands", "Feet", "Shoes", "Body_Full", "Anus", "Sex_Act", "Hpis" };
         // OBB 모델 내부 클래스명(한국어, 중복 제거) - 타겟 체크박스 재구성에 사용
-        public static readonly string[] ObbUniqueTargets = new[] { "얼굴", "눈", "가슴", "가슴_옷", "겨드랑이", "배꼽", "자지", "보지", "엉덩이", "항문", "팬티", "손", "발", "신발", "몸 전체", "교미", "여성" };
+        public static readonly string[] ObbUniqueTargets = new[]
+        {
+            "여성얼굴", "남성얼굴", "눈", "가슴", "가슴_속옷", "옷입은가슴",
+            "겨드랑이", "배꼽", "자지", "보지", "하체", "팬티",
+            "옷입은하체", "손", "발", "신발", "몸 전체", "항문", "성행위", "엉덩이"
+        };
 
         public MosaicProcessor(string modelPath)
         {
@@ -305,68 +310,84 @@ namespace MosaicCensorSystem.Detection
         
         public void ApplySingleCensorOptimized(Mat frame, Detection detection)
         {
-            float cx = detection.CenterX;
-            float cy = detection.CenterY;
-            float ow = detection.ObbWidth;
-            float oh = detection.ObbHeight;
-            if (ow <= 0 || oh <= 0) return;
-
-            float degree = detection.Angle * (180.0f / (float)Math.PI);
-            var center2f = new Point2f(cx, cy);
-
-            // Step 1: 검출 객체가 수평이 되도록 프레임 전체를 회전
-            using var M_fwd = Cv2.GetRotationMatrix2D(center2f, degree, 1.0);
-            using var warped = new Mat();
-            Cv2.WarpAffine(frame, warped, M_fwd, frame.Size());
-
-            // Step 2: 회전된 프레임에서 수평 ROI 추출
-            int rx = Math.Max(0, (int)(cx - ow / 2));
-            int ry = Math.Max(0, (int)(cy - oh / 2));
-            int rw = Math.Min(frame.Width - rx, (int)ow);
-            int rh = Math.Min(frame.Height - ry, (int)oh);
-            if (rw <= 0 || rh <= 0) return;
-
-            // Step 3: 수평 ROI에 검열 효과 적용 (격자 자체가 수평 기준으로 생성됨)
-            using (var roi = new Mat(warped, new Rect(rx, ry, rw, rh)))
+            if (isObbMode)
             {
+                if (detection.ObbWidth <= 0 || detection.ObbHeight <= 0) return;
+
+                // 라디안을 도로 변환
+                float degree = detection.Angle * (180.0f / (float)Math.PI);
+                var center = new Point2f(detection.CenterX, detection.CenterY);
+                var size = new Size2f(detection.ObbWidth, detection.ObbHeight);
+                var rotRect = new RotatedRect(center, size, degree);
+
+                // 1. 회전된 사각형을 감싸는 안전한 HBB(BoundingRect) 구하기
+                Rect boundingRect = rotRect.BoundingRect();
+                int x = Math.Max(0, boundingRect.X);
+                int y = Math.Max(0, boundingRect.Y);
+                int w = Math.Min(boundingRect.Width, frame.Width - x);
+                int h = Math.Min(boundingRect.Height, frame.Height - y);
+
+                if (w <= 0 || h <= 0) return;
+
+                Rect safeRect = new Rect(x, y, w, h);
+
+                // 2. 화면 전체가 아닌 해당 박스 영역(ROI)만 메모리에 올림
+                using Mat region = new Mat(frame, safeRect);
+                using Mat effectMat = region.Clone();
+
+                // 3. 모자이크/블러 효과를 임시 이미지(effectMat)에 적용
                 if (currentCensorType == CensorType.Mosaic)
                 {
-                    int smallW = Math.Max(1, rw / strength);
-                    int smallH = Math.Max(1, rh / strength);
-                    using var small = new Mat();
-                    using var enlarged = new Mat();
-                    Cv2.Resize(roi, small, new OpenCvSharp.Size(smallW, smallH), interpolation: InterpolationFlags.Linear);
-                    Cv2.Resize(small, enlarged, new OpenCvSharp.Size(rw, rh), interpolation: InterpolationFlags.Nearest);
-                    enlarged.CopyTo(roi);
+                    int smallW = Math.Max(1, w / strength), smallH = Math.Max(1, h / strength);
+                    using Mat small = new Mat();
+                    Cv2.Resize(region, small, new OpenCvSharp.Size(smallW, smallH), interpolation: InterpolationFlags.Linear);
+                    Cv2.Resize(small, effectMat, new OpenCvSharp.Size(w, h), interpolation: InterpolationFlags.Nearest);
                 }
                 else if (currentCensorType == CensorType.Blur)
                 {
                     int kernelSize = Math.Max(3, strength + 1);
                     if (kernelSize % 2 == 0) kernelSize++;
-                    using var blurred = new Mat();
-                    Cv2.GaussianBlur(roi, blurred, new OpenCvSharp.Size(kernelSize, kernelSize), 0);
-                    blurred.CopyTo(roi);
+                    Cv2.GaussianBlur(region, effectMat, new OpenCvSharp.Size(kernelSize, kernelSize), 0);
                 }
                 else if (currentCensorType == CensorType.BlackBox)
                 {
-                    var blackColor = roi.Channels() == 4 ? new Scalar(0, 0, 0, 255) : new Scalar(0, 0, 0);
-                    roi.SetTo(blackColor);
+                    effectMat.SetTo(region.Channels() == 4 ? new Scalar(0, 0, 0, 255) : new Scalar(0, 0, 0));
+                }
+
+                // 4. 기울어진 다각형(RotatedRect) 모양의 마스크 생성
+                using Mat mask = new Mat(safeRect.Size, MatType.CV_8UC1, Scalar.All(0));
+                var pts = rotRect.Points().Select(p => new Point((int)Math.Round(p.X - x), (int)Math.Round(p.Y - y))).ToArray();
+                Cv2.FillConvexPoly(mask, pts, Scalar.All(255));
+
+                // 5. 마스크가 칠해진 대각선 영역에만 효과를 원본에 덮어쓰기
+                effectMat.CopyTo(region, mask);
+            }
+            else
+            {
+                // 기존 HBB(표준 모델) 렌더링 로직
+                if (detection.Width <= 0 || detection.Height <= 0) return;
+                Rect roi = new Rect(detection.BBox[0], detection.BBox[1], detection.Width, detection.Height);
+                using Mat region = new Mat(frame, roi);
+
+                if (currentCensorType == CensorType.Mosaic)
+                {
+                    int w = region.Width, h = region.Height;
+                    int smallW = Math.Max(1, w / strength), smallH = Math.Max(1, h / strength);
+                    using Mat small = new Mat();
+                    Cv2.Resize(region, small, new OpenCvSharp.Size(smallW, smallH), interpolation: InterpolationFlags.Linear);
+                    Cv2.Resize(small, region, new OpenCvSharp.Size(w, h), interpolation: InterpolationFlags.Nearest);
+                }
+                else if (currentCensorType == CensorType.Blur)
+                {
+                    int kernelSize = Math.Max(3, strength + 1);
+                    if (kernelSize % 2 == 0) kernelSize++;
+                    Cv2.GaussianBlur(region, region, new OpenCvSharp.Size(kernelSize, kernelSize), 0);
+                }
+                else if (currentCensorType == CensorType.BlackBox)
+                {
+                    region.SetTo(region.Channels() == 4 ? new Scalar(0, 0, 0, 255) : new Scalar(0, 0, 0));
                 }
             }
-
-            // Step 4: 검열이 적용된 프레임을 원래 각도로 역회전
-            using var M_inv = Cv2.GetRotationMatrix2D(center2f, -degree, 1.0);
-            using var warpedBack = new Mat();
-            Cv2.WarpAffine(warped, warpedBack, M_inv, frame.Size());
-
-            // Step 5: 원본 프레임 좌표계에서 OBB 다각형 마스크 생성
-            var rotRect = new RotatedRect(center2f, new Size2f(ow, oh), degree);
-            var pts = rotRect.Points().Select(p => new Point((int)p.X, (int)p.Y)).ToArray();
-            using var mask = new Mat(frame.Size(), MatType.CV_8UC1, Scalar.Black);
-            Cv2.FillConvexPoly(mask, pts, Scalar.White);
-
-            // Step 6: 역회전된 결과를 마스크 영역만큼 원본 프레임에 합성
-            warpedBack.CopyTo(frame, mask);
         }
 
         public void SetTargets(List<string> targets) => Targets = targets ?? new List<string>();

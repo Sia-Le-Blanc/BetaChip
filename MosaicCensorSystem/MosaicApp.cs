@@ -99,10 +99,8 @@ namespace MosaicCensorSystem
                 if (success)
                 {
                     uiController.LogMessage("✅ 모델 교체 완료!");
-                    string[] targets = isObb ? MosaicProcessor.ObbUniqueTargets : MosaicProcessor.HbbClasses;
-                    uiController.RebuildTargetCheckboxes(targets);
-                    // RebuildTargetCheckboxes → OnTargetChanged → TargetsChanged → processor.SetTargets() 체인으로
-                    // 모델 교체 직후 UI의 선택된 타겟이 프로세서에 즉시 반영됨
+                    // UI에 OBB용/HBB용 클래스 리스트를 전달하여 체크박스를 동적으로 재생성함
+                    uiController.RebuildTargetCheckboxes(isObb ? MosaicProcessor.ObbUniqueTargets : MosaicProcessor.HbbClasses);
                 }
                 else uiController.LogMessage("❌ 모델 교체 실패! 경로를 확인하세요.");
             };

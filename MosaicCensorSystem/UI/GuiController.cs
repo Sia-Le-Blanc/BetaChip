@@ -449,7 +449,9 @@ namespace MosaicCensorSystem.UI
             targetCheckBoxes.Clear();
 
             // 이전 선택과 새 목록의 교집합이 없으면 기본 타겟 사용
-            var defaultTargets = new[] { "얼굴", "가슴", "보지", "팬티" };
+            var defaultTargets = availableTargets.Contains("여성얼굴")
+                ? new[] { "여성얼굴", "가슴", "보지", "팬티" }  // OBB 모드 기본값
+                : new[] { "얼굴", "가슴", "보지", "팬티" };      // HBB 모드 기본값
             bool useDefault = !previouslySelected.Any(t => availableTargets.Contains(t));
 
             // 새 체크박스 생성

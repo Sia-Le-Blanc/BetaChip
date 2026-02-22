@@ -291,7 +291,7 @@
     <value>배꼽</value>
   </data>
   <data name="Target_엉덩이" xml:space="preserve">
-    <value>엉덩이</value>
+    <value>엉덩이 (골반)</value>
   </data>
 
   <!-- 타겟 체크박스 툴팁 -->
@@ -341,7 +341,59 @@
     <value>배꼽 부위를 감지하고 검열합니다. (OBB 모델 전용)</value>
   </data>
   <data name="TooltipTarget_엉덩이" xml:space="preserve">
-    <value>엉덩이 부위를 감지하고 검열합니다. (OBB 모델 전용)</value>
+    <value>엉덩이(골반) 부위를 검열합니다.</value>
+  </data>
+
+  <!-- OBB 전용 검열 대상 -->
+  <data name="Target_여성얼굴" xml:space="preserve">
+    <value>여성 얼굴</value>
+  </data>
+  <data name="Target_남성얼굴" xml:space="preserve">
+    <value>남성 얼굴</value>
+  </data>
+  <data name="Target_가슴_속옷" xml:space="preserve">
+    <value>가슴(속옷)</value>
+  </data>
+  <data name="Target_옷입은가슴" xml:space="preserve">
+    <value>옷 입은 가슴</value>
+  </data>
+  <data name="Target_하체" xml:space="preserve">
+    <value>하체 (맨엉덩이)</value>
+  </data>
+  <data name="Target_옷입은하체" xml:space="preserve">
+    <value>옷 입은 하체</value>
+  </data>
+  <data name="Target_항문" xml:space="preserve">
+    <value>항문</value>
+  </data>
+  <data name="Target_성행위" xml:space="preserve">
+    <value>성행위</value>
+  </data>
+
+  <!-- OBB 전용 타겟 툴팁 -->
+  <data name="TooltipTarget_여성얼굴" xml:space="preserve">
+    <value>여성의 얼굴을 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_남성얼굴" xml:space="preserve">
+    <value>남성의 얼굴을 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_가슴_속옷" xml:space="preserve">
+    <value>속옷(브래지어)을 입은 가슴 부위를 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_옷입은가슴" xml:space="preserve">
+    <value>옷을 입고 있는 가슴 부위를 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_하체" xml:space="preserve">
+    <value>노출된 하체(맨엉덩이)를 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_옷입은하체" xml:space="preserve">
+    <value>옷을 입은 하체를 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_항문" xml:space="preserve">
+    <value>항문을 검열합니다.</value>
+  </data>
+  <data name="TooltipTarget_성행위" xml:space="preserve">
+    <value>성행위 장면을 검열합니다.</value>
   </data>
 
   <!-- GPU 상태 번역 -->
