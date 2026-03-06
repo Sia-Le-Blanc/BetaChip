@@ -18,5 +18,16 @@ namespace MosaicCensorSystem
         
         // --- Overlay Settings ---
         public const bool ShowDebugInfo = false;
+
+#if DEBUG
+        // --- Development Mode (오프라인/Mock 테스트용) ---
+        // --dev 인수 또는 BETACHIP_DEV_MODE=true 환경 변수로 활성화됩니다.
+        public static bool IsDevelopmentMode { get; private set; } = false;
+
+        internal static void SetDevelopmentMode(bool value)
+        {
+            IsDevelopmentMode = value;
+        }
+#endif
     }
 }

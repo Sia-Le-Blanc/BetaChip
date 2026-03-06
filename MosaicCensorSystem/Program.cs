@@ -9,8 +9,8 @@ namespace MosaicCensorSystem
 {
     internal static class Program
     {
-        public static readonly string? STANDARD_MODEL_PATH = GetModelPath("best.onnx");
-        public static readonly string? OBB_MODEL_PATH = GetModelPath("bestobb.onnx");
+        public static readonly string? STANDARD_MODEL_PATH = ResolveModelPath(ModelRegistry.Standard.FileName);
+        public static readonly string? OBB_MODEL_PATH     = ResolveModelPath(ModelRegistry.Oriented.FileName);
 
         [STAThread]
         static void Main(string[] args)
@@ -20,11 +20,29 @@ namespace MosaicCensorSystem
             foreach (var arg in args)
             {
                 if (arg.ToLower() == "--compat" || arg.ToLower() == "/compat")
-                {
                     forceCompatMode = true;
+            }
+
+#if DEBUG
+            // 개발자 모드 감지: --dev 인수 또는 BETACHIP_DEV_MODE=true 환경 변수
+            bool devMode = false;
+            foreach (var arg in args)
+            {
+                if (arg.ToLower() == "--dev")
+                {
+                    devMode = true;
                     break;
                 }
             }
+            if (!devMode)
+            {
+                string? envVar = Environment.GetEnvironmentVariable("BETACHIP_DEV_MODE");
+                devMode = string.Equals(envVar, "true", StringComparison.OrdinalIgnoreCase);
+            }
+            Config.SetDevelopmentMode(devMode);
+            if (devMode)
+                Console.WriteLine("[DEV MODE] 개발자 모드 활성화 — Mock 데이터를 사용합니다. (릴리즈 빌드에서는 비활성화됩니다)");
+#endif
 
             // 2. 디스플레이 호환성 초기화 (DPI 설정보다 먼저!)
             try
@@ -56,15 +74,16 @@ namespace MosaicCensorSystem
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
 
             // 5. 모델 파일 확인
+            // 표준 모델(best.onnx)은 필수 — 없으면 실행 불가.
             if (string.IsNullOrEmpty(STANDARD_MODEL_PATH))
             {
                 ShowModelNotFoundError("best.onnx");
                 return;
             }
+            // OBB 모델(bestobb.onnx)은 선택 사항 — 없으면 UI에서 해당 라디오 버튼이 비활성화됩니다.
             if (string.IsNullOrEmpty(OBB_MODEL_PATH))
             {
-                ShowModelNotFoundError("bestobb.onnx");
-                return;
+                Console.WriteLine("⚠️ OBB 모델 파일(bestobb.onnx)을 찾을 수 없습니다. 정밀 모드는 비활성화됩니다.");
             }
 
             // 6. 메인 애플리케이션 실행
@@ -169,6 +188,41 @@ namespace MosaicCensorSystem
                                         "BetaChip", "error.log");
 
             MessageBox.Show(errorDetails, "초기화 오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+
+        /// <summary>
+        /// ModelRegistry.FileName("Resources\best.onnx" 형태)을 받아 절대 경로를 반환합니다.
+        ///
+        /// ※ 이중 경로 방지 원칙:
+        ///   relativeFileName에 이미 "Resources\"가 포함되어 있으므로,
+        ///   Path.Combine(baseDir, relativeFileName)만 수행합니다.
+        ///   내부에서 "Resources"를 추가로 붙이지 않습니다.
+        ///
+        /// 1순위: BaseDirectory + relativeFileName 직접 조합 → bin\...\Unified\Resources\*.onnx
+        /// 2순위: 기존 다중 위치 탐색 로직(GetModelPath) 폴백 (파일명만 추출하여 사용)
+        /// </summary>
+        private static string? ResolveModelPath(string relativeFileName)
+        {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory ?? string.Empty;
+
+            // relativeFileName = "Resources\bestobb.onnx" (ModelRegistry 제공값, 그대로 신뢰)
+            // Path.Combine은 "Resources"를 추가로 붙이지 않으므로 이중 경로 위험 없음.
+            string primaryPath = Path.GetFullPath(Path.Combine(baseDir, relativeFileName));
+
+            // 요청된 형식: File.Exists 호출 직전에 검사 대상 경로를 출력
+            Console.WriteLine($"[CHECK] Testing Path: {primaryPath}");
+            if (File.Exists(primaryPath))
+            {
+                Console.WriteLine($"[OK]    Found: {primaryPath}");
+                return primaryPath;
+            }
+
+            // 폴백: 파일명만 추출하여 기존 레지스트리/다중경로 탐색 로직에 위임
+            // Path.GetFileName("Resources\bestobb.onnx") = "bestobb.onnx" → 이중 경로 없이 안전
+            string fileName = Path.GetFileName(relativeFileName);
+            Console.WriteLine($"[MISS]  {primaryPath}");
+            Console.WriteLine($"[FALL]  Fallback search for: {fileName}");
+            return GetModelPath(fileName);
         }
 
         private static string? GetModelPath(string modelFileName)

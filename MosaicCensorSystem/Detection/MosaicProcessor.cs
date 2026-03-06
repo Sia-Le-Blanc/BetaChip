@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using OpenCvSharp;
+using MosaicCensorSystem;
 
 namespace MosaicCensorSystem.Detection
 {
@@ -34,7 +35,8 @@ namespace MosaicCensorSystem.Detection
         private InferenceSession model;
         private readonly object _lockObj = new object();
         public bool isObbMode = false;
-        private readonly float[] inputBuffer = new float[1 * 3 * 640 * 640];
+        private int _inputSize = 640;
+        private float[] inputBuffer = new float[1 * 3 * 640 * 640];
         private readonly SortTracker tracker = new SortTracker();
 
         private Mat _resizedMat = new Mat();
@@ -49,28 +51,10 @@ namespace MosaicCensorSystem.Detection
 
         public string CurrentExecutionProvider { get; private set; } = "CPU";
 
-        // 기존 표준(HBB) 모델용 클래스
-        private static readonly Dictionary<int, string> ClassNames = new()
-        {
-            {0, "얼굴"}, {1, "가슴"}, {2, "겨드랑이"}, {3, "보지"}, {4, "발"},
-            {5, "몸 전체"}, {6, "자지"}, {7, "팬티"}, {8, "눈"}, {9, "손"},
-            {10, "교미"}, {11, "신발"}, {12, "가슴_옷"}, {13, "여성"}
-        };
-        
-        // 신규 정밀(OBB) 모델용 클래스 (사용자 피드백 반영)
-        private static readonly Dictionary<int, string> ClassNamesObb = new()
-        {
-            {0, "여성얼굴"}, {1, "남성얼굴"}, {2, "눈"}, {3, "가슴"},
-            {4, "가슴_속옷"}, {5, "옷입은가슴"}, {6, "겨드랑이"}, {7, "배꼽"},
-            {8, "자지"}, {9, "보지"}, {10, "하체"}, {11, "팬티"},
-            {12, "옷입은하체"}, {13, "손"}, {14, "발"}, {15, "신발"},
-            {16, "몸 전체"}, {17, "항문"}, {18, "성행위"}, {19, "엉덩이"}
-        };
-        
-        private static readonly Dictionary<string, float> NmsThresholds = new() { ["얼굴"] = 0.4f, ["여성얼굴"] = 0.4f, ["가슴"] = 0.4f, ["보지"] = 0.4f };
-
-        public static readonly string[] HbbClasses = new[] { "얼굴", "가슴", "겨드랑이", "보지", "발", "몸 전체", "자지", "팬티", "눈", "손", "교미", "신발", "가슴_옷", "여성" };
-        public static readonly string[] ObbUniqueTargets = new[] { "여성얼굴", "남성얼굴", "눈", "가슴", "가슴_속옷", "옷입은가슴", "겨드랑이", "배꼽", "자지", "보지", "하체", "팬티", "옷입은하체", "손", "발", "신발", "몸 전체", "항문", "성행위", "엉덩이" };
+        // ModelRegistry가 클래스 인덱스→이름 매핑의 단일 진실 공급원입니다.
+        // HbbClasses / ObbUniqueTargets는 외부(GuiController, MosaicApp)에서 참조하는 공개 뷰입니다.
+        public static string[] HbbClasses => ModelRegistry.Standard.Classes;
+        public static string[] ObbUniqueTargets => ModelRegistry.Oriented.Classes;
 
         public MosaicProcessor(string modelPath)
         {
@@ -84,6 +68,16 @@ namespace MosaicCensorSystem.Detection
                 Console.WriteLine($"❌ 모델 파일 없음: {modelPath}");
                 return;
             }
+
+            // 파일 크기 확인 (0바이트 또는 비정상적으로 작으면 손상 의심)
+            var fileInfo = new System.IO.FileInfo(modelPath);
+            Console.WriteLine($"[LoadModel] 파일 크기: {fileInfo.Length:N0} bytes ({fileInfo.Length / 1024.0 / 1024.0:F2} MB)");
+            if (fileInfo.Length < 1024)
+            {
+                Console.WriteLine($"❌ 파일이 너무 작습니다 ({fileInfo.Length} bytes). 손상되었거나 빈 파일일 수 있습니다.");
+                return;
+            }
+
             try
             {
                 var sessionOptions = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
@@ -95,18 +89,18 @@ namespace MosaicCensorSystem.Detection
                     detectedProvider = "CUDA (GPU)";
                     Console.WriteLine("✅ CUDA가 성공적으로 설정되었습니다.");
                 }
-                catch (Exception)
+                catch (Exception cudaEx)
                 {
-                    Console.WriteLine("⚠️ CUDA 사용 불가. DirectML(Windows 기본 GPU 가속)을 시도합니다...");
+                    Console.WriteLine($"⚠️ CUDA 사용 불가 ({cudaEx.Message}). DirectML(Windows 기본 GPU 가속)을 시도합니다...");
                     try
                     {
                         sessionOptions.AppendExecutionProvider_DML();
                         detectedProvider = "DirectML (GPU)";
                         Console.WriteLine("✅ DirectML이 성공적으로 설정되었습니다.");
                     }
-                    catch (Exception)
+                    catch (Exception dmlEx)
                     {
-                        Console.WriteLine("⚠️ GPU 가속 사용 불가. CPU로 실행합니다.");
+                        Console.WriteLine($"⚠️ GPU 가속 사용 불가 ({dmlEx.Message}). CPU로 실행합니다.");
                         sessionOptions.AppendExecutionProvider_CPU();
                         detectedProvider = "CPU";
                     }
@@ -116,10 +110,39 @@ namespace MosaicCensorSystem.Detection
                 Console.WriteLine($"✅ 모델 로드 성공: {modelPath}");
                 CurrentExecutionProvider = detectedProvider;
                 Console.WriteLine($"📈 현재 실행 장치: {CurrentExecutionProvider}");
+
+                Console.WriteLine("--- [InputMetadata] ---");
+                foreach (var kv in model.InputMetadata)
+                {
+                    Console.WriteLine($"  Input  '{kv.Key}': type={kv.Value.ElementType}, shape=[{string.Join(",", kv.Value.Dimensions)}]");
+                }
+                Console.WriteLine("--- [OutputMetadata] ---");
+                foreach (var kv in model.OutputMetadata)
+                {
+                    Console.WriteLine($"  Output '{kv.Key}': type={kv.Value.ElementType}, shape=[{string.Join(",", kv.Value.Dimensions)}]");
+                }
+
+                // InputMetadata에서 실제 입력 크기 읽기 (YOLO: [1, 3, H, W])
+                var inputDims = model.InputMetadata.Values.First().Dimensions;
+                if (inputDims.Length >= 4 && inputDims[2] > 0 && inputDims[3] > 0)
+                {
+                    int newSize = (int)inputDims[2]; // H (= W, YOLO는 정방형)
+                    if (newSize != _inputSize)
+                    {
+                        Console.WriteLine($"  → 입력 크기 변경: {_inputSize}x{_inputSize} → {newSize}x{newSize}");
+                        _inputSize = newSize;
+                        inputBuffer = new float[1 * 3 * _inputSize * _inputSize];
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"  ⚠️ 입력 차원이 동적이거나 비표준입니다. 기존 크기({_inputSize})를 유지합니다.");
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ 모델 로드 중 심각한 오류 발생: {ex.Message}");
+                Console.WriteLine("❌ 모델 로드 중 심각한 오류 발생:");
+                Console.WriteLine(ex.ToString()); // Message + InnerException 체인 + StackTrace 전체 출력
                 model = null;
                 CurrentExecutionProvider = "로드 실패 (CPU)";
             }
@@ -153,7 +176,7 @@ namespace MosaicCensorSystem.Detection
                 try
                 {
                     var (scale, padX, padY) = Preprocess(frame, inputBuffer);
-                    var inputTensor = new DenseTensor<float>(inputBuffer, new[] { 1, 3, 640, 640 });
+                    var inputTensor = new DenseTensor<float>(inputBuffer, new[] { 1, 3, _inputSize, _inputSize });
                     var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("images", inputTensor) };
                     using var results = model.Run(inputs);
                     var outputTensor = results.First().AsTensor<float>();
@@ -192,7 +215,7 @@ namespace MosaicCensorSystem.Detection
 
         private (float scale, int padX, int padY) Preprocess(Mat frame, float[] buffer)
         {
-            const int TargetSize = 640;
+            int TargetSize = _inputSize;
             float scale = Math.Min((float)TargetSize / frame.Width, (float)TargetSize / frame.Height);
             int newWidth = (int)(frame.Width * scale);
             int newHeight = (int)(frame.Height * scale);
@@ -244,8 +267,8 @@ namespace MosaicCensorSystem.Detection
                 if (maxScore <= ConfThreshold || maxClassId == -1) continue;
 
                 string className = isObbMode
-                    ? ClassNamesObb.GetValueOrDefault(maxClassId)
-                    : ClassNames.GetValueOrDefault(maxClassId);
+                    ? ModelRegistry.Oriented.GetClassName(maxClassId)
+                    : ModelRegistry.Standard.GetClassName(maxClassId);
 
                 if (className == null || !Targets.Contains(className)) continue;
 
@@ -307,7 +330,8 @@ namespace MosaicCensorSystem.Detection
             foreach (var group in detections.GroupBy(d => d.ClassName))
             {
                 var orderedGroup = group.OrderByDescending(d => d.Confidence).ToList();
-                float nmsThreshold = NmsThresholds.GetValueOrDefault(group.Key, 0.45f);
+                var thresholds = isObbMode ? ModelRegistry.Oriented.NmsThresholds : ModelRegistry.Standard.NmsThresholds;
+                float nmsThreshold = thresholds.TryGetValue(group.Key, out float t) ? t : 0.45f;
                 while (orderedGroup.Any())
                 {
                     var best = orderedGroup.First();
@@ -419,7 +443,7 @@ namespace MosaicCensorSystem.Detection
                 {
                     if (model == null) return;
                     Console.WriteLine("🔥 모델 워밍업 시작...");
-                    var dummyInput = new DenseTensor<float>(new float[1 * 3 * 640 * 640], new[] { 1, 3, 640, 640 });
+                    var dummyInput = new DenseTensor<float>(new float[1 * 3 * _inputSize * _inputSize], new[] { 1, 3, _inputSize, _inputSize });
                     var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("images", dummyInput) };
                     
                     using (model.Run(inputs)) { }

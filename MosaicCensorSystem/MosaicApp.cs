@@ -14,8 +14,9 @@ namespace MosaicCensorSystem
     {
         public readonly Form Root;
         private readonly GuiController uiController;
-        private CensorService censorService; 
-        private readonly ApiService _apiService = new ApiService(); 
+        private CensorService censorService;
+        private readonly ApiService _apiService = new ApiService();
+        private SubscriptionInfo _subInfo;
 
         public MosaicApp()
         {
@@ -46,24 +47,31 @@ namespace MosaicCensorSystem
 
             // 실제로는 로그인한 유저의 ID를 사용해야 하지만, 현재 테스트용 UID를 사용합니다.
             var userId = "4e222613-7a83-4063-b717-d7e06bed0122"; 
-            var subInfo = await _apiService.GetSubscriptionAsync(userId);
+            _subInfo = await _apiService.GetSubscriptionAsync(userId);
 
-            if (subInfo == null)
+            if (_subInfo == null)
             {
-                subInfo = new SubscriptionInfo { Tier = "free", Email = "Offline Mode" };
+                _subInfo = new SubscriptionInfo { Tier = "free", Email = "Offline Mode" };
                 uiController.LogMessage("⚠️ 서버 연결 실패. 무료 버전으로 시작합니다.");
             }
             else
             {
-                uiController.LogMessage($"✅ 로그인 성공: {subInfo.Email} ([{subInfo.Tier.ToUpper()}] 등급)");
+                uiController.LogMessage($"✅ 로그인 성공: {_subInfo.Email} ([{_subInfo.Tier.ToUpper()}] 등급)");
             }
 
             // 구독 정보를 전달하며 서비스 초기화
-            censorService = new CensorService(uiController, subInfo);
-            
+            censorService = new CensorService(uiController, _subInfo);
+
             ConnectEvents();
             uiController.UpdateGpuStatus(censorService.Processor.CurrentExecutionProvider);
-            Root.Text = $"Mosaic Censor System - {subInfo.Tier.ToUpper()} Edition";
+            Root.Text = $"Mosaic Censor System - {_subInfo.Tier.ToUpper()} Edition";
+
+            // OBB 모델 파일 존재 여부를 확인하여 라디오 버튼 활성/비활성화
+            if (string.IsNullOrEmpty(Program.OBB_MODEL_PATH))
+            {
+                uiController.LogMessage("⚠️ OBB 모델 파일(bestobb.onnx)을 찾을 수 없습니다. 정밀 모드를 비활성화합니다.");
+                uiController.SetObbModelAvailable(false);
+            }
         }
 
         private void ConnectEvents()
@@ -93,19 +101,31 @@ namespace MosaicCensorSystem
             // ★ 핵심: 모델 교체 시 런타임 핫스왑 처리 및 UI 타겟 체크박스 동적 재구성
             uiController.ModelTypeChanged += (isObb) =>
             {
+                // ModelRegistry를 통해 모델 정의를 가져옵니다.
+                var modelDef = isObb ? ModelRegistry.Oriented : ModelRegistry.Standard;
                 string newModelPath = isObb ? Program.OBB_MODEL_PATH : Program.STANDARD_MODEL_PATH;
+
+                // ── 진입 진단 로그 ──────────────────────────────────────────
+                Console.WriteLine($"[SwitchModel] 진입: isObb={isObb}, path={newModelPath}");
+                Console.WriteLine($"[SwitchModel] 구독 티어: {_subInfo?.Tier ?? "(null)"}");
+#if DEBUG
+                Console.WriteLine($"[SwitchModel] IsDevelopmentMode: {Config.IsDevelopmentMode}");
+#endif
+                // ────────────────────────────────────────────────────────────
+
                 uiController.LogMessage($"🔄 모델 교체 중... ({(isObb ? "OBB 정밀 모델" : "표준 모델")})");
 
                 // processor의 모델을 실시간으로 교체
                 bool success = censorService.Processor.SwitchModel(newModelPath, isObb);
 
-                if (success) 
+                if (success)
                 {
                     uiController.LogMessage("✅ 모델 교체 완료!");
-                    // 모델에 맞춰 UI 체크박스 항목을 14개(HBB) 또는 20개(OBB)로 즉시 변경합니다.
-                    uiController.RebuildTargetCheckboxes(isObb ? MosaicProcessor.ObbUniqueTargets : MosaicProcessor.HbbClasses);
+                    // ModelRegistry의 클래스 목록으로 UI 체크박스를 재구성합니다.
+                    // 이름이 일치하는 항목은 체크 상태가 자동으로 유지됩니다.
+                    uiController.RebuildTargetCheckboxes(modelDef.Classes);
                 }
-                else 
+                else
                 {
                     uiController.LogMessage("❌ 모델 교체 실패! 파일 경로를 확인하세요.");
                 }

@@ -338,9 +338,10 @@ namespace MosaicCensorSystem.UI
             targetCheckBoxes.Clear();
 
             // HBB, OBB 각각의 상황에 맞는 초기 기본 선택값 세팅
-            var defaultTargets = availableTargets.Contains("여성얼굴") 
-                ? new[] { "여성얼굴", "가슴", "보지", "팬티" } // OBB 기본값
-                : new[] { "얼굴", "가슴", "보지", "팬티" };     // HBB 기본값
+            // OBB 판별: ModelRegistry.Oriented.Classes의 첫 번째 항목("Face_Female")으로 구분합니다.
+            var defaultTargets = availableTargets.Contains("Face_Female")
+                ? new[] { "Face_Female", "Breast_Nude", "Vulva_Nude", "Panty" } // OBB 기본값
+                : new[] { "얼굴", "가슴", "보지", "팬티" };                      // HBB 기본값
 
             bool useDefault = !previouslySelected.Any(t => availableTargets.Contains(t));
 
@@ -534,6 +535,19 @@ namespace MosaicCensorSystem.UI
                 return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// OBB 모델 파일이 없을 경우 라디오 버튼을 비활성화합니다.
+        /// </summary>
+        public void SetObbModelAvailable(bool available)
+        {
+            if (disposed) return;
+            if (rootForm.InvokeRequired) { rootForm.Invoke(new Action(() => SetObbModelAvailable(available))); return; }
+            if (obbModelRadio == null) return;
+            obbModelRadio.Enabled = available;
+            if (!available && obbModelRadio.Checked)
+                standardModelRadio.Checked = true;
         }
 
         public void Dispose()

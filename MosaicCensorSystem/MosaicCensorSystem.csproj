@@ -32,19 +32,27 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Resources\best.onnx">
+    <!--
+      Resources 폴더는 프로젝트 루트(BetaChip\Resources\)에 위치합니다.
+      .csproj는 MosaicCensorSystem\ 안에 있으므로 상대 경로는 ..\Resources\ 입니다.
+      <None Update>는 프로젝트 디렉터리 내 파일에만 동작하므로, 외부 파일은 반드시 <None Include>를 사용해야 합니다.
+      Link 속성으로 출력 디렉터리 내 복사 위치(bin\...\Unified\Resources\)를 지정합니다.
+    -->
+    <None Include="..\Resources\best.onnx">
+      <Link>Resources\best.onnx</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Resources\bestobb.onnx">
+    <None Include="..\Resources\bestobb.onnx">
+      <Link>Resources\bestobb.onnx</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
 
-    <Content Include="Resources\Stickers\**\*" Condition="Exists('Resources\Stickers')">
+    <Content Include="..\Resources\Stickers\**\*">
       <Link>Stickers\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
 
-    <Content Include="Resources\OverlayText\**\*" Condition="Exists('Resources\OverlayText')">
+    <Content Include="..\Resources\OverlayText\**\*">
       <Link>Resources\OverlayText\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

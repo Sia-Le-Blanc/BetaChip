@@ -233,6 +233,49 @@
   <data name="TooltipTarget_엉덩이" xml:space="preserve"><value>엉덩이(골반) 부위를 감지하고 검열합니다.</value></data>
   <data name="TooltipTarget_여성" xml:space="preserve"><value>여성의 전체적인 모습을 감지하고 검열합니다.</value></data>
 
+  <!-- OBB 모델(bestobb.onnx) 클래스명 — 영어 정규명 기반 (ModelRegistry.Oriented.Classes 순서와 동일) -->
+  <data name="Target_Face_Female" xml:space="preserve"><value>여성 얼굴</value></data>
+  <data name="Target_Face_Male" xml:space="preserve"><value>남성 얼굴</value></data>
+  <data name="Target_Eyes" xml:space="preserve"><value>눈</value></data>
+  <data name="Target_Breast_Nude" xml:space="preserve"><value>가슴(누드)</value></data>
+  <data name="Target_Breast_Underwear" xml:space="preserve"><value>가슴(속옷)</value></data>
+  <data name="Target_Breast_Clothed" xml:space="preserve"><value>가슴(옷)</value></data>
+  <data name="Target_Armpit" xml:space="preserve"><value>겨드랑이</value></data>
+  <data name="Target_Navel" xml:space="preserve"><value>배꼽</value></data>
+  <data name="Target_Penis" xml:space="preserve"><value>자지</value></data>
+  <data name="Target_Vulva_Nude" xml:space="preserve"><value>보지</value></data>
+  <data name="Target_Butt_Nude" xml:space="preserve"><value>엉덩이(노출)</value></data>
+  <data name="Target_Panty" xml:space="preserve"><value>팬티</value></data>
+  <data name="Target_Butt_Clothed" xml:space="preserve"><value>엉덩이(옷)</value></data>
+  <data name="Target_Hands" xml:space="preserve"><value>손</value></data>
+  <data name="Target_Feet" xml:space="preserve"><value>발</value></data>
+  <data name="Target_Shoes" xml:space="preserve"><value>신발</value></data>
+  <data name="Target_Body_Full" xml:space="preserve"><value>몸 전체</value></data>
+  <data name="Target_Anus" xml:space="preserve"><value>항문</value></data>
+  <data name="Target_Sex_Act" xml:space="preserve"><value>성행위</value></data>
+  <data name="Target_Hpis" xml:space="preserve"><value>골반</value></data>
+
+  <data name="TooltipTarget_Face_Female" xml:space="preserve"><value>여성의 얼굴을 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Face_Male" xml:space="preserve"><value>남성의 얼굴을 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Eyes" xml:space="preserve"><value>눈 부위만 따로 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Breast_Nude" xml:space="preserve"><value>노출된 가슴 부위를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Breast_Underwear" xml:space="preserve"><value>속옷(브래지어)을 입은 가슴 부위를 검열합니다.</value></data>
+  <data name="TooltipTarget_Breast_Clothed" xml:space="preserve"><value>옷을 입은 가슴 부위를 검열합니다.</value></data>
+  <data name="TooltipTarget_Armpit" xml:space="preserve"><value>겨드랑이 부위를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Navel" xml:space="preserve"><value>배꼽 부위를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Penis" xml:space="preserve"><value>남성 생식기를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Vulva_Nude" xml:space="preserve"><value>여성 생식기를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Butt_Nude" xml:space="preserve"><value>노출된 엉덩이를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Panty" xml:space="preserve"><value>속옷(팬티)을 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Butt_Clothed" xml:space="preserve"><value>옷이나 속옷을 입은 엉덩이를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Hands" xml:space="preserve"><value>손 부위를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Feet" xml:space="preserve"><value>발 부위를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Shoes" xml:space="preserve"><value>신발을 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Body_Full" xml:space="preserve"><value>전신 누드를 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Anus" xml:space="preserve"><value>항문을 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Sex_Act" xml:space="preserve"><value>성행위 장면을 감지하고 검열합니다.</value></data>
+  <data name="TooltipTarget_Hpis" xml:space="preserve"><value>골반/엉덩이 부위를 감지하고 검열합니다.</value></data>
+
   <data name="GPU_CUDA" xml:space="preserve">
     <value>CUDA (NVIDIA GPU 가속)</value>
   </data>

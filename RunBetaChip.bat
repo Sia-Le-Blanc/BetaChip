@@ -15,16 +15,18 @@ echo [2] 호환성 모드로 실행 (화면 문제 해결)
 echo [3] 관리자 권한으로 실행
 echo [4] 디스플레이 설정 확인
 echo [5] 오류 로그 확인
-echo [6] 종료
+echo [6] 개발자 모드로 실행 (오프라인/Mock 테스트, DEBUG 빌드 전용)
+echo [7] 종료
 echo.
-set /p choice=선택 (1-6): 
+set /p choice=선택 (1-7):
 
 if "%choice%"=="1" goto normal
 if "%choice%"=="2" goto compat
 if "%choice%"=="3" goto admin
 if "%choice%"=="4" goto checkdisplay
 if "%choice%"=="5" goto errorlog
-if "%choice%"=="6" goto end
+if "%choice%"=="6" goto devmode
+if "%choice%"=="7" goto end
 
 echo 잘못된 선택입니다. 다시 선택해주세요.
 echo.
@@ -84,6 +86,17 @@ echo.
 pause
 cls
 goto menu
+
+:devmode
+echo.
+echo [개발자 모드] 실행합니다...
+echo 실제 API 서버 없이 Mock 데이터로 동작합니다.
+echo (DEBUG 빌드에서만 유효하며, 릴리즈 빌드에서는 일반 모드로 동작합니다)
+echo.
+set BETACHIP_DEV_MODE=true
+start "" "%~dp0MosaicCensorSystem.exe" --dev
+set BETACHIP_DEV_MODE=
+goto end
 
 :end
 echo.
