@@ -1,11 +1,12 @@
 #nullable disable
 using System;
+using System.IO;
 using System.Drawing;
 using System.Windows.Forms;
-using System.Threading.Tasks; 
+using System.Threading.Tasks;
 using MosaicCensorSystem.UI;
-using MosaicCensorSystem.Services; 
-using MosaicCensorSystem.Models;   
+using MosaicCensorSystem.Services;
+using MosaicCensorSystem.Models;
 using MosaicCensorSystem.Detection; // OBB 타겟 클래스 참조를 위해 추가
 
 namespace MosaicCensorSystem
@@ -84,7 +85,6 @@ namespace MosaicCensorSystem
             uiController.StickerToggled += (val) => censorService.UpdateSetting("EnableStickers", val);
             uiController.CaptionToggled += (val) => censorService.UpdateSetting("EnableCaptions", val);
             
-            uiController.FpsChanged += (fps) => censorService.UpdateSetting("TargetFPS", fps);
             uiController.DetectionToggled += (val) => censorService.UpdateSetting("EnableDetection", val);
             uiController.CensoringToggled += (val) => censorService.UpdateSetting("EnableCensoring", val);
             uiController.CensorTypeChanged += (type) => censorService.UpdateSetting("CensorType", type);
@@ -111,23 +111,42 @@ namespace MosaicCensorSystem
 #if DEBUG
                 Console.WriteLine($"[SwitchModel] IsDevelopmentMode: {Config.IsDevelopmentMode}");
 #endif
+
+                // C. 파일 존재 여부 재검증 — 런타임 시점에 파일이 소실됐는지 확인
+                bool fileExists = !string.IsNullOrEmpty(newModelPath) && File.Exists(newModelPath);
+                Console.WriteLine($"[SwitchModel] File.Exists = {fileExists}  ({newModelPath ?? "(경로 없음)"})");
+                if (!fileExists)
+                {
+                    uiController.LogMessage($"❌ 모델 교체 실패! 파일 없음: {newModelPath ?? "(경로 null)"}");
+                    return;
+                }
                 // ────────────────────────────────────────────────────────────
 
                 uiController.LogMessage($"🔄 모델 교체 중... ({(isObb ? "OBB 정밀 모델" : "표준 모델")})");
 
-                // processor의 모델을 실시간으로 교체
-                bool success = censorService.Processor.SwitchModel(newModelPath, isObb);
+                // A. SwitchModel 호출을 try-catch로 감싸 버블업 예외도 포착
+                bool success;
+                try
+                {
+                    success = censorService.Processor.SwitchModel(newModelPath, isObb);
+                }
+                catch (Exception ex)
+                {
+                    uiController.LogMessage($"❌ 모델 교체 실패! 상세 이유: {ex.Message}");
+                    Console.WriteLine("--- 상세 스택 트레이스 ---");
+                    Console.WriteLine(ex.ToString());
+                    return;
+                }
 
                 if (success)
                 {
                     uiController.LogMessage("✅ 모델 교체 완료!");
-                    // ModelRegistry의 클래스 목록으로 UI 체크박스를 재구성합니다.
-                    // 이름이 일치하는 항목은 체크 상태가 자동으로 유지됩니다.
                     uiController.RebuildTargetCheckboxes(modelDef.Classes);
                 }
                 else
                 {
-                    uiController.LogMessage("❌ 모델 교체 실패! 파일 경로를 확인하세요.");
+                    // LoadModel 내부에서 LogCallback을 통해 이미 상세 오류가 위 UI 로그에 출력됨
+                    uiController.LogMessage("❌ 모델 교체 실패! 위 로그에서 상세 사유를 확인하세요.");
                 }
             };
         }

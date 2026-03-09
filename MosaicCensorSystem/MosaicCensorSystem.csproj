@@ -10,6 +10,7 @@
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     
     <NoWarn>$(NoWarn);NETSDK1206</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -22,7 +23,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.15.1" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.19.2" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime.Extensions" Version="0.13.0" />
     <PackageReference Include="OpenCvSharp4" Version="4.9.0.20240103" />
     <PackageReference Include="OpenCvSharp4.Extensions" Version="4.9.0.20240103" />

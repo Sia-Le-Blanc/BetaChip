@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build -c Debug)",
+      "Bash(dotnet build MosaicCensorSystem/MosaicCensorSystem.csproj)"
+    ]
+  }
+}

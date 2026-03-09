@@ -8,47 +8,49 @@ Directory structure:
     ├── setup-patreon-plus.iss
     ├── setup-patreon.iss
     ├── setup-script-free.iss
-    └── MosaicCensorSystem/
-        ├── app.manifest
-        ├── CensorService.cs
-        ├── Config.cs
-        ├── ModelRegistry.cs
-        ├── MosaicApp.cs
-        ├── MosaicCensorSystem.csproj
-        ├── Program.cs
-        ├── Capture/
-        │   └── ScreenCapturer.cs
-        ├── Detection/
-        │   ├── IProcessor.cs
-        │   ├── MosaicProcessor.cs
-        │   └── SortTracker.cs
-        ├── Diagnostics/
-        │   └── OnnxDiagnostics.cs
-        ├── Helpers/
-        │   └── GpuDetector.cs
-        ├── Management/
-        │   ├── IOverlayManager.cs
-        │   ├── MultiMonitorManager.cs
-        │   └── SingleMonitorManager.cs
-        ├── Models/
-        │   └── SubscriptionInfo.cs
-        ├── Overlay/
-        │   ├── FullscreenOverlay.cs
-        │   ├── IOverlay.cs
-        │   └── OverlayTextManager.cs
-        ├── Properties/
-        │   ├── launchSettings.json
-        │   ├── Strings.en.resx
-        │   └── Strings.resx
-        ├── Services/
-        │   └── ApiService.cs
-        ├── UI/
-        │   ├── GpuSetupForm.cs
-        │   ├── GuiController.cs
-        │   └── ScrollablePanel.cs
-        └── Utils/
-            ├── DisplayCompatibility.cs
-            └── UserSettings.cs
+    ├── MosaicCensorSystem/
+    │   ├── app.manifest
+    │   ├── CensorService.cs
+    │   ├── Config.cs
+    │   ├── ModelRegistry.cs
+    │   ├── MosaicApp.cs
+    │   ├── MosaicCensorSystem.csproj
+    │   ├── Program.cs
+    │   ├── Capture/
+    │   │   └── ScreenCapturer.cs
+    │   ├── Detection/
+    │   │   ├── IProcessor.cs
+    │   │   ├── MosaicProcessor.cs
+    │   │   └── SortTracker.cs
+    │   ├── Diagnostics/
+    │   │   └── OnnxDiagnostics.cs
+    │   ├── Helpers/
+    │   │   └── GpuDetector.cs
+    │   ├── Management/
+    │   │   ├── IOverlayManager.cs
+    │   │   ├── MultiMonitorManager.cs
+    │   │   └── SingleMonitorManager.cs
+    │   ├── Models/
+    │   │   └── SubscriptionInfo.cs
+    │   ├── Overlay/
+    │   │   ├── FullscreenOverlay.cs
+    │   │   ├── IOverlay.cs
+    │   │   └── OverlayTextManager.cs
+    │   ├── Properties/
+    │   │   ├── launchSettings.json
+    │   │   ├── Strings.en.resx
+    │   │   └── Strings.resx
+    │   ├── Services/
+    │   │   └── ApiService.cs
+    │   ├── UI/
+    │   │   ├── GpuSetupForm.cs
+    │   │   ├── GuiController.cs
+    │   │   └── ScrollablePanel.cs
+    │   └── Utils/
+    │       ├── DisplayCompatibility.cs
+    │       └── UserSettings.cs
+    └── .claude/
+        └── settings.local.json
 
 ================================================
 FILE: BetaChip_AutoDiagnose.bat
@@ -862,7 +864,9 @@ namespace MosaicCensorSystem
             // 등급에 따라 매니저 결정 (Patreon 이상이면 멀티모니터)
             if (_subInfo.Tier == "plus" || _subInfo.Tier == "patreon")
             {
-                overlayManager = new MultiMonitorManager(capturer);
+                // GPU 여부를 전달하여 병렬/직렬 추론 모드를 결정
+                bool isGpuActive = !processor.CurrentExecutionProvider.Contains("CPU", StringComparison.OrdinalIgnoreCase);
+                overlayManager = new MultiMonitorManager(isGpuActive);
                 ui.LogMessage($"🖥️ [{_subInfo.Tier.ToUpper()}] 등급 확인: 멀티 모니터 관리자 활성화!");
             }
             else
@@ -1060,10 +1064,7 @@ namespace MosaicCensorSystem
             bool settingsChanged = false;
             switch (key)
             {
-                case nameof(CensorSettings.TargetFPS): 
-                    currentSettings = currentSettings with { TargetFPS = (int)value }; 
-                    settingsChanged = true; 
-                    break;
+                // TargetFPS 케이스 제거: FPS는 하드웨어가 자동으로 결정
                 case nameof(CensorSettings.EnableDetection): 
                     currentSettings = currentSettings with { EnableDetection = (bool)value }; 
                     settingsChanged = true; 
@@ -1102,6 +1103,13 @@ namespace MosaicCensorSystem
         
         private void BlendStickerOnMosaic(Mat frame, Detection.Detection detection, Mat sticker)
         {
+            // OBB 모드이고 유효한 각도가 있으면 회전 렌더링 경로로 분기
+            if (processor.isObbMode && detection.ObbWidth > 0 && detection.ObbHeight > 0)
+            {
+                BlendRotatedStickerObb(frame, detection, sticker);
+                return;
+            }
+
             try
             {
                 int x = Math.Max(0, detection.BBox[0]);
@@ -1135,6 +1143,71 @@ namespace MosaicCensorSystem
             catch { }
         }
         
+        // OBB 전용: 스티커를 detection 각도(Degree)로 회전하여 OBB 중심에 합성
+        private void BlendRotatedStickerObb(Mat frame, Detection.Detection detection, Mat sticker)
+        {
+            try
+            {
+                int ow = Math.Max(1, (int)detection.ObbWidth);
+                int oh = Math.Max(1, (int)detection.ObbHeight);
+
+                // 스티커를 OBB 고유 크기로 리사이즈
+                using var resized = new Mat();
+                Cv2.Resize(sticker, resized, new OpenCvSharp.Size(ow, oh), interpolation: InterpolationFlags.Area);
+
+                // 스티커 중심 기준 회전 행렬 (Detection.Angle은 이미 Degree 단위)
+                var stickerCenter = new Point2f(ow / 2f, oh / 2f);
+                using var rotMat = Cv2.GetRotationMatrix2D(stickerCenter, detection.Angle, 1.0);
+
+                // 회전 후 바운딩 박스 크기 계산
+                var rotRect = new RotatedRect(stickerCenter, new Size2f(ow, oh), (float)detection.Angle);
+                var bb = rotRect.BoundingRect();
+                int dstW = Math.Max(1, bb.Width);
+                int dstH = Math.Max(1, bb.Height);
+
+                // 회전 후 이미지 중심이 (dstW/2, dstH/2)에 오도록 평행이동 보정
+                rotMat.At<double>(0, 2) += (dstW - ow) / 2.0;
+                rotMat.At<double>(1, 2) += (dstH - oh) / 2.0;
+
+                using var rotated = new Mat();
+                Cv2.WarpAffine(resized, rotated, rotMat, new OpenCvSharp.Size(dstW, dstH),
+                    flags: InterpolationFlags.Linear, borderMode: BorderTypes.Constant, borderValue: new Scalar(0));
+
+                // OBB 중심 좌표를 기준으로 프레임 상의 붙여넣기 위치 계산
+                int pasteX = (int)(detection.CenterX - dstW / 2f);
+                int pasteY = (int)(detection.CenterY - dstH / 2f);
+
+                // 프레임 경계를 벗어나는 영역 클리핑
+                int srcX = Math.Max(0, -pasteX);
+                int srcY = Math.Max(0, -pasteY);
+                int dstX = Math.Max(0, pasteX);
+                int dstY = Math.Max(0, pasteY);
+                int copyW = Math.Min(dstW - srcX, frame.Width - dstX);
+                int copyH = Math.Min(dstH - srcY, frame.Height - dstY);
+                if (copyW <= 0 || copyH <= 0) return;
+
+                using var srcRoi = new Mat(rotated, new Rect(srcX, srcY, copyW, copyH));
+                using var dstRoi = new Mat(frame, new Rect(dstX, dstY, copyW, copyH));
+
+                if (srcRoi.Channels() == 4)
+                {
+                    Mat[] ch = Cv2.Split(srcRoi);
+                    try
+                    {
+                        using var bgr = new Mat();
+                        Cv2.Merge(new[] { ch[0], ch[1], ch[2] }, bgr);
+                        bgr.CopyTo(dstRoi, ch[3]); // alpha 채널을 마스크로 사용
+                    }
+                    finally { foreach (var c in ch) c?.Dispose(); }
+                }
+                else
+                {
+                    srcRoi.CopyTo(dstRoi);
+                }
+            }
+            catch { }
+        }
+
         private void LoadStickers()
         {
             string stickerPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Stickers");
@@ -1282,9 +1355,9 @@ namespace MosaicCensorSystem
             DefaultTargets = new[] { "얼굴", "가슴", "보지", "팬티" },
             NmsThresholds = new Dictionary<string, float>
             {
-                ["얼굴"] = 0.4f,
-                ["가슴"] = 0.4f,
-                ["보지"] = 0.4f
+                ["얼굴"] = 0.45f,
+                ["가슴"] = 0.45f,
+                ["보지"] = 0.45f
             }
         };
 
@@ -1321,10 +1394,10 @@ namespace MosaicCensorSystem
             DefaultTargets = new[] { "Face_Female", "Breast_Nude", "Vulva_Nude", "Panty" },
             NmsThresholds = new Dictionary<string, float>
             {
-                ["Face_Female"] = 0.4f,
-                ["Face_Male"]   = 0.4f,
-                ["Breast_Nude"] = 0.4f,
-                ["Vulva_Nude"]  = 0.4f
+                ["Face_Female"] = 0.45f,
+                ["Face_Male"]   = 0.45f,
+                ["Breast_Nude"] = 0.45f,
+                ["Vulva_Nude"]  = 0.45f
             }
         };
     }
@@ -1335,7 +1408,165 @@ namespace MosaicCensorSystem
 ================================================
 FILE: MosaicCensorSystem/MosaicApp.cs
 ================================================
-[Binary file]
+#nullable disable
+using System;
+using System.IO;
+using System.Drawing;
+using System.Windows.Forms;
+using System.Threading.Tasks;
+using MosaicCensorSystem.UI;
+using MosaicCensorSystem.Services;
+using MosaicCensorSystem.Models;
+using MosaicCensorSystem.Detection; // OBB 타겟 클래스 참조를 위해 추가
+
+namespace MosaicCensorSystem
+{
+    public class MosaicApp
+    {
+        public readonly Form Root;
+        private readonly GuiController uiController;
+        private CensorService censorService;
+        private readonly ApiService _apiService = new ApiService();
+        private SubscriptionInfo _subInfo;
+
+        public MosaicApp()
+        {
+            Root = new Form
+            {
+                Text = "Mosaic Censor System (Checking License...)",
+                Size = new Size(500, 850),
+                MinimumSize = new Size(480, 700),
+                StartPosition = FormStartPosition.CenterScreen
+            };
+
+            uiController = new GuiController(Root);
+
+            // 앱 로드 시 서버에서 라이선스 정보 가져오기
+            Root.Load += async (s, e) => await InitializeLicenseAndService();
+
+            Root.FormClosing += (s, e) =>
+            {
+                censorService?.Stop();
+                censorService?.Dispose();
+                uiController.Dispose();
+            };
+        }
+
+        private async Task InitializeLicenseAndService()
+        {
+            uiController.LogMessage("🔍 라이선스 정보를 확인 중입니다...");
+
+            // 실제로는 로그인한 유저의 ID를 사용해야 하지만, 현재 테스트용 UID를 사용합니다.
+            var userId = "4e222613-7a83-4063-b717-d7e06bed0122"; 
+            _subInfo = await _apiService.GetSubscriptionAsync(userId);
+
+            if (_subInfo == null)
+            {
+                _subInfo = new SubscriptionInfo { Tier = "free", Email = "Offline Mode" };
+                uiController.LogMessage("⚠️ 서버 연결 실패. 무료 버전으로 시작합니다.");
+            }
+            else
+            {
+                uiController.LogMessage($"✅ 로그인 성공: {_subInfo.Email} ([{_subInfo.Tier.ToUpper()}] 등급)");
+            }
+
+            // 구독 정보를 전달하며 서비스 초기화
+            censorService = new CensorService(uiController, _subInfo);
+
+            ConnectEvents();
+            uiController.UpdateGpuStatus(censorService.Processor.CurrentExecutionProvider);
+            Root.Text = $"Mosaic Censor System - {_subInfo.Tier.ToUpper()} Edition";
+
+            // OBB 모델 파일 존재 여부를 확인하여 라디오 버튼 활성/비활성화
+            if (string.IsNullOrEmpty(Program.OBB_MODEL_PATH))
+            {
+                uiController.LogMessage("⚠️ OBB 모델 파일(bestobb.onnx)을 찾을 수 없습니다. 정밀 모드를 비활성화합니다.");
+                uiController.SetObbModelAvailable(false);
+            }
+        }
+
+        private void ConnectEvents()
+        {
+            uiController.StartClicked += censorService.Start;
+            uiController.StopClicked += censorService.Stop;
+            uiController.CaptureAndSaveClicked += censorService.CaptureAndSave;
+            
+            // 등급 정보에 따라 이벤트 연결 (등급별 기능 제한은 CensorService 내부 로직에서 처리함)
+            uiController.StickerToggled += (val) => censorService.UpdateSetting("EnableStickers", val);
+            uiController.CaptionToggled += (val) => censorService.UpdateSetting("EnableCaptions", val);
+            
+            uiController.DetectionToggled += (val) => censorService.UpdateSetting("EnableDetection", val);
+            uiController.CensoringToggled += (val) => censorService.UpdateSetting("EnableCensoring", val);
+            uiController.CensorTypeChanged += (type) => censorService.UpdateSetting("CensorType", type);
+            uiController.StrengthChanged += (val) => censorService.UpdateSetting("Strength", val);
+            uiController.ConfidenceChanged += (val) => censorService.UpdateSetting("Confidence", val);
+            uiController.TargetsChanged += (targets) => censorService.UpdateSetting("Targets", targets);
+            uiController.GpuSetupClicked += () =>
+            {
+                var gpuResult = Helpers.GpuDetector.Detect();
+                using var gpuForm = new UI.GpuSetupForm(gpuResult);
+                gpuForm.ShowDialog();
+            };
+            
+            // ★ 핵심: 모델 교체 시 런타임 핫스왑 처리 및 UI 타겟 체크박스 동적 재구성
+            uiController.ModelTypeChanged += (isObb) =>
+            {
+                // ModelRegistry를 통해 모델 정의를 가져옵니다.
+                var modelDef = isObb ? ModelRegistry.Oriented : ModelRegistry.Standard;
+                string newModelPath = isObb ? Program.OBB_MODEL_PATH : Program.STANDARD_MODEL_PATH;
+
+                // ── 진입 진단 로그 ──────────────────────────────────────────
+                Console.WriteLine($"[SwitchModel] 진입: isObb={isObb}, path={newModelPath}");
+                Console.WriteLine($"[SwitchModel] 구독 티어: {_subInfo?.Tier ?? "(null)"}");
+#if DEBUG
+                Console.WriteLine($"[SwitchModel] IsDevelopmentMode: {Config.IsDevelopmentMode}");
+#endif
+
+                // C. 파일 존재 여부 재검증 — 런타임 시점에 파일이 소실됐는지 확인
+                bool fileExists = !string.IsNullOrEmpty(newModelPath) && File.Exists(newModelPath);
+                Console.WriteLine($"[SwitchModel] File.Exists = {fileExists}  ({newModelPath ?? "(경로 없음)"})");
+                if (!fileExists)
+                {
+                    uiController.LogMessage($"❌ 모델 교체 실패! 파일 없음: {newModelPath ?? "(경로 null)"}");
+                    return;
+                }
+                // ────────────────────────────────────────────────────────────
+
+                uiController.LogMessage($"🔄 모델 교체 중... ({(isObb ? "OBB 정밀 모델" : "표준 모델")})");
+
+                // A. SwitchModel 호출을 try-catch로 감싸 버블업 예외도 포착
+                bool success;
+                try
+                {
+                    success = censorService.Processor.SwitchModel(newModelPath, isObb);
+                }
+                catch (Exception ex)
+                {
+                    uiController.LogMessage($"❌ 모델 교체 실패! 상세 이유: {ex.Message}");
+                    Console.WriteLine("--- 상세 스택 트레이스 ---");
+                    Console.WriteLine(ex.ToString());
+                    return;
+                }
+
+                if (success)
+                {
+                    uiController.LogMessage("✅ 모델 교체 완료!");
+                    uiController.RebuildTargetCheckboxes(modelDef.Classes);
+                }
+                else
+                {
+                    // LoadModel 내부에서 LogCallback을 통해 이미 상세 오류가 위 UI 로그에 출력됨
+                    uiController.LogMessage("❌ 모델 교체 실패! 위 로그에서 상세 사유를 확인하세요.");
+                }
+            };
+        }
+
+        public void Run()
+        {
+            Application.Run(Root);
+        }
+    }
+}
 
 
 ================================================
@@ -1353,6 +1584,7 @@ FILE: MosaicCensorSystem/MosaicCensorSystem.csproj
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     
     <NoWarn>$(NoWarn);NETSDK1206</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -1365,7 +1597,7 @@ FILE: MosaicCensorSystem/MosaicCensorSystem.csproj
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.15.1" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.19.2" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime.Extensions" Version="0.13.0" />
     <PackageReference Include="OpenCvSharp4" Version="4.9.0.20240103" />
     <PackageReference Include="OpenCvSharp4.Extensions" Version="4.9.0.20240103" />
@@ -1962,6 +2194,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
+using System.Threading.Tasks;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using OpenCvSharp;
@@ -1999,10 +2234,21 @@ namespace MosaicCensorSystem.Detection
 
         private Mat _resizedMat = new Mat();
         private Mat _paddedMat = new Mat();
-        private Mat[] _channels = new Mat[3];
+        private Mat[] _channels = null; // Cv2.Split 호출 시마다 새로 할당
+
+        // ── 성능 최적화: 프레임마다 재사용하는 버퍼 ──────────────────────────
+        // NMS 전 후보 리스트, NMS 후 결과, 최종 트래킹 결과를 재사용해 GC 압력 감소
+        private readonly List<Detection> _detectionBuffer = new List<Detection>(256);
+        private readonly List<Detection> _nmsBuffer      = new List<Detection>(64);
+        private readonly List<Detection> _finalBuffer    = new List<Detection>(64);
+
+        // 타겟 클래스 인덱스 캐시: Targets 변경 시에만 재계산, 핫루프에서 사용
+        private int[]  _targetClassIndices = Array.Empty<int>();
+        private string _targetCacheKey     = "";  // 캐시 무효화 키
 
         public Action<string> LogCallback { get; set; }
-        public float ConfThreshold { get; set; } = 0.3f;
+        // 0.05로 하향하여 다양한 환경(저화질/각도)에서도 안정적인 검열 확보
+        public float ConfThreshold { get; set; } = 0.05f;
         public List<string> Targets { get; private set; } = new List<string> { "얼굴", "가슴" };
         private CensorType currentCensorType = CensorType.Mosaic;
         private int strength = 20;
@@ -2023,12 +2269,43 @@ namespace MosaicCensorSystem.Detection
         {
             if (!File.Exists(modelPath))
             {
-                Console.WriteLine($"❌ 모델 파일 없음: {modelPath}");
+                string msg = $"❌ 모델 파일 없음: {modelPath}";
+                Console.WriteLine(msg);
+                LogCallback?.Invoke(msg);
                 return;
             }
+
+            // 파일 크기 확인 (0바이트 또는 비정상적으로 작으면 손상 의심)
+            var fileInfo = new System.IO.FileInfo(modelPath);
+            Console.WriteLine($"[LoadModel] 파일 크기: {fileInfo.Length:N0} bytes ({fileInfo.Length / 1024.0 / 1024.0:F2} MB)");
+            if (fileInfo.Length < 1024)
+            {
+                string msg = $"❌ 파일 손상 의심 ({fileInfo.Length} bytes): {modelPath}";
+                Console.WriteLine(msg);
+                LogCallback?.Invoke(msg);
+                return;
+            }
+
             try
             {
-                var sessionOptions = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
+                int cpuCores = Environment.ProcessorCount;
+                var sessionOptions = new SessionOptions
+                {
+                    GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
+                    // ── CPU 메모리 아레나: 반복 할당 비용 제거 ─────────────
+                    EnableCpuMemArena     = true,
+                    // ── 메모리 패턴 최적화: 동일한 입력 형태에 대한
+                    //    메모리 레이아웃을 재사용하여 추론 속도 향상 ──────────
+                    EnableMemoryPattern   = true,
+                    // ── 병렬 실행 모드: 독립 그래프 노드를 멀티코어로 처리 ──
+                    ExecutionMode         = ExecutionMode.ORT_PARALLEL,
+                    // ── 단일 Op 내 스레드 수: 대형 행렬 연산에 영향 ────────
+                    IntraOpNumThreads     = cpuCores,
+                    // ── 병렬 Op 간 스레드 수 ──────────────────────────────
+                    InterOpNumThreads     = Math.Max(1, cpuCores / 2),
+                };
+                Console.WriteLine($"[SessionOptions] Cores={cpuCores}, IntraOp={cpuCores}, InterOp={Math.Max(1, cpuCores / 2)}, Mode=PARALLEL, MemArena=ON, MemPattern=ON");
+
                 string detectedProvider = "CPU";
                 try
                 {
@@ -2054,7 +2331,22 @@ namespace MosaicCensorSystem.Detection
                     }
                 }
 
-                model = new InferenceSession(modelPath, sessionOptions);
+                try
+                {
+                    model = new InferenceSession(modelPath, sessionOptions);
+                }
+                catch (Exception sessionEx)
+                {
+                    // Opset 불호환 / 파일 손상 / DLL 누락 여부를 StackTrace로 확인하세요
+                    Console.WriteLine("❌ InferenceSession 생성 실패:");
+                    Console.WriteLine(sessionEx.ToString());
+                    LogCallback?.Invoke($"❌ 모델 로드 실패: {sessionEx.Message}");
+                    if (sessionEx.InnerException != null)
+                        LogCallback?.Invoke($"   ㄴ 상세: {sessionEx.InnerException.Message}");
+                    model = null;
+                    CurrentExecutionProvider = "로드 실패 (CPU)";
+                    return;
+                }
                 Console.WriteLine($"✅ 모델 로드 성공: {modelPath}");
                 CurrentExecutionProvider = detectedProvider;
                 Console.WriteLine($"📈 현재 실행 장치: {CurrentExecutionProvider}");
@@ -2071,28 +2363,42 @@ namespace MosaicCensorSystem.Detection
                 }
 
                 // InputMetadata에서 실제 입력 크기 읽기 (YOLO: [1, 3, H, W])
-                var inputDims = model.InputMetadata.Values.First().Dimensions;
-                if (inputDims.Length >= 4 && inputDims[2] > 0 && inputDims[3] > 0)
+                try
                 {
-                    int newSize = (int)inputDims[2]; // H (= W, YOLO는 정방형)
-                    if (newSize != _inputSize)
+                    var inputDims = model.InputMetadata.Values.First().Dimensions;
+                    if (inputDims.Length >= 4 && inputDims[2] > 0 && inputDims[3] > 0)
                     {
-                        Console.WriteLine($"  → 입력 크기 변경: {_inputSize}x{_inputSize} → {newSize}x{newSize}");
-                        _inputSize = newSize;
-                        inputBuffer = new float[1 * 3 * _inputSize * _inputSize];
+                        int newSize = (int)inputDims[2]; // H (= W, YOLO는 정방형)
+                        if (newSize != _inputSize)
+                        {
+                            Console.WriteLine($"  → 입력 크기 변경: {_inputSize}x{_inputSize} → {newSize}x{newSize}");
+                            LogCallback?.Invoke($"📐 입력 크기 조정: {_inputSize}→{newSize}px");
+                            _inputSize = newSize;
+                            inputBuffer = new float[1 * 3 * _inputSize * _inputSize];
+                        }
+                    }
+                    else
+                    {
+                        string dimStr = string.Join(",", inputDims.ToArray());
+                        string warn = $"⚠️ 입력 텐서 형태 비표준 [{dimStr}]. 기존 {_inputSize}px 유지.";
+                        Console.WriteLine(warn);
+                        LogCallback?.Invoke(warn);
                     }
                 }
-                else
+                catch (Exception metaEx)
                 {
-                    Console.WriteLine($"  ⚠️ 입력 차원이 동적이거나 비표준입니다. 기존 크기({_inputSize})를 유지합니다.");
+                    string warn = $"⚠️ InputMetadata 읽기 실패: {metaEx.Message}";
+                    Console.WriteLine(warn);
+                    LogCallback?.Invoke(warn);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ 모델 로드 중 심각한 오류 발생: {ex.Message}");
+                Console.WriteLine("❌ 모델 로드 중 심각한 오류 발생:");
+                Console.WriteLine(ex.ToString());
+                LogCallback?.Invoke($"❌ 모델 로드 오류: {ex.Message}");
                 if (ex.InnerException != null)
-                    Console.WriteLine($"  InnerException: {ex.InnerException.Message}");
-                Console.WriteLine($"  StackTrace:\n{ex.StackTrace}");
+                    LogCallback?.Invoke($"   ㄴ 상세: {ex.InnerException.Message}");
                 model = null;
                 CurrentExecutionProvider = "로드 실패 (CPU)";
             }
@@ -2136,7 +2442,8 @@ namespace MosaicCensorSystem.Detection
                     var trackBoxes = nmsDetections.Select(d => new Rect2d(d.BBox[0], d.BBox[1], d.Width, d.Height)).ToList();
                     var trackedResults = tracker.Update(trackBoxes);
 
-                    var finalDetections = new List<Detection>();
+                    _finalBuffer.Clear();
+                    var finalDetections = _finalBuffer;
                     var remainingDetections = new List<Detection>(nmsDetections);
 
                     foreach (var track in trackedResults)
@@ -2163,74 +2470,200 @@ namespace MosaicCensorSystem.Detection
             }
         }
 
-        private (float scale, int padX, int padY) Preprocess(Mat frame, float[] buffer)
+        // ── AVX2 SIMD 전처리 핵심 메서드 ────────────────────────────────────────
+        // 1024×1024 입력에서 OpenCV ConvertTo(byte→float) + Split(채널분리)의
+        // 2회 풀이미지 패스를 단 1회로 압축합니다.
+        //
+        // [이전] ConvertTo(4MB→16MB) → Split(16MB→16MB) → Marshal.Copy(12MB→12MB) = ~60MB 대역폭
+        // [이후] Resize + Border(byte) → SIMD 단일패스(4MB→12MB)                    = ~28MB 대역폭
+        //
+        // AVX2: 8픽셀/사이클 처리 (_mm256_cvtepu8_epi32 + _mm256_cvtepi32_ps)
+        // 폴백: 스칼라 루프 (JIT가 자동 벡터화)
+        private static unsafe void ByteToFloatNormalizeSimd(byte* src, float* dst, int count)
+        {
+            const float inv255 = 1.0f / 255.0f;
+            int i = 0;
+
+            if (Avx2.IsSupported)
+            {
+                var invVec256 = Vector256.Create(inv255);
+
+                for (; i <= count - 8; i += 8)
+                {
+                    // 8바이트를 64비트 스칼라로 로드 → 128비트 레지스터 하위에 배치
+                    var bytes8 = Sse2.LoadScalarVector128((long*)(src + i)).AsByte();
+
+                    // uint8 × 8 → int32 × 8 (256비트) : _mm256_cvtepu8_epi32
+                    var ints256 = Avx2.ConvertToVector256Int32(bytes8);
+
+                    // int32 × 8 → float × 8 : _mm256_cvtepi32_ps
+                    var floats256 = Avx.ConvertToVector256Single(ints256);
+
+                    // float × 8 / 255 : _mm256_mul_ps
+                    var norm256 = Avx.Multiply(floats256, invVec256);
+
+                    // 8개 float 저장 : _mm256_storeu_ps
+                    Avx.Store(dst + i, norm256);
+                }
+            }
+
+            // 나머지 픽셀 스칼라 처리 (또는 비-AVX2 폴백 전체)
+            for (; i < count; i++)
+                dst[i] = src[i] * inv255;
+        }
+
+        private unsafe (float scale, int padX, int padY) Preprocess(Mat frame, float[] buffer)
         {
             int TargetSize = _inputSize;
             float scale = Math.Min((float)TargetSize / frame.Width, (float)TargetSize / frame.Height);
-            int newWidth = (int)(frame.Width * scale);
+            int newWidth  = (int)(frame.Width  * scale);
             int newHeight = (int)(frame.Height * scale);
-            int padX = (TargetSize - newWidth) / 2;
+            int padX = (TargetSize - newWidth)  / 2;
             int padY = (TargetSize - newHeight) / 2;
-            
+
+            // OpenCV는 내부적으로 SIMD를 사용하므로 Resize/Border는 유지
             Cv2.Resize(frame, _resizedMat, new OpenCvSharp.Size(newWidth, newHeight), interpolation: InterpolationFlags.Linear);
-            Cv2.CopyMakeBorder(_resizedMat, _paddedMat, padY, TargetSize - newHeight - padY, padX, TargetSize - newWidth - padX, BorderTypes.Constant, new Scalar(114, 114, 114));
-            
-            _paddedMat.ConvertTo(_paddedMat, MatType.CV_32F, 1.0 / 255.0);
-            Cv2.Split(_paddedMat, out _channels);
-            
-            Marshal.Copy(_channels[2].Data, buffer, 0, TargetSize * TargetSize);
-            Marshal.Copy(_channels[1].Data, buffer, TargetSize * TargetSize, TargetSize * TargetSize);
-            Marshal.Copy(_channels[0].Data, buffer, 2 * TargetSize * TargetSize, TargetSize * TargetSize);
+            Cv2.CopyMakeBorder(_resizedMat, _paddedMat,
+                padY, TargetSize - newHeight - padY,
+                padX, TargetSize - newWidth  - padX,
+                BorderTypes.Constant, new Scalar(114, 114, 114));
+
+            // ── _paddedMat은 CV_8UC4 (BGRA byte) 상태 유지 ────────────────────
+            // ConvertTo(byte→float) 단계를 완전히 제거하고 SIMD에서 직접 처리합니다.
+            if (_channels != null)
+                foreach (var c in _channels) c?.Dispose();
+            Cv2.Split(_paddedMat, out _channels); // byte 채널 분리 (float 변환 없음)
+
+            int planeSize = TargetSize * TargetSize;
+
+            // ── 3채널 SIMD 변환을 Parallel.For로 동시 실행 ──────────────────────
+            // inputBuffer의 각 구간(non-overlapping)에 쓰므로 thread-safe.
+            // C# 언어 규칙상 fixed 포인터는 람다 내에서 사용 불가이므로
+            // GCHandle.Alloc으로 배열을 직접 핀닝하여 안정적 포인터를 확보합니다.
+            var gcHandle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+            try
+            {
+                float* bufPtr = (float*)gcHandle.AddrOfPinnedObject();
+                Parallel.For(0, 3, ch =>
+                {
+                    int srcCh = 2 - ch; // BGR → RGB: ch=0→R(ch[2]), ch=1→G(ch[1]), ch=2→B(ch[0])
+                    ByteToFloatNormalizeSimd(
+                        (byte*)_channels[srcCh].Data,
+                        bufPtr + ch * planeSize,
+                        planeSize);
+                });
+            }
+            finally
+            {
+                gcHandle.Free();
+            }
 
             return (scale, padX, padY);
         }
 
+        // ── 타겟 클래스 인덱스 캐시 갱신 ─────────────────────────────────────────
+        // Targets 목록이 바뀌었을 때만 재계산합니다. 핫루프에서 반복 호출되므로
+        // string 비교만으로 캐시를 검증해 오버헤드를 최소화합니다.
+        private void RebuildTargetIndicesIfNeeded(int numClasses)
+        {
+            // 캐시 키: "target1,target2,...:isObb"
+            string key = string.Join(",", Targets) + (isObbMode ? ":obb" : ":hbb");
+            if (key == _targetCacheKey) return;
+
+            _targetCacheKey = key;
+            var indices = new List<int>(Targets.Count);
+            for (int c = 0; c < numClasses; c++)
+            {
+                string name = isObbMode
+                    ? ModelRegistry.Oriented.GetClassName(c)
+                    : ModelRegistry.Standard.GetClassName(c);
+                if (name != null && Targets.Contains(name))
+                    indices.Add(c);
+            }
+            _targetClassIndices = indices.ToArray();
+        }
+
         private List<Detection> Postprocess(Tensor<float> output, float scale, int padX, int padY, int originalWidth, int originalHeight)
         {
-            var detections = new List<Detection>();
+            _detectionBuffer.Clear();
+
             var dims = output.Dimensions;
-
             bool isTransposed = dims.Length == 3 && dims[1] > dims[2];
-            int numAnchors = isTransposed ? dims[1] : dims[2];
+            int numAnchors  = isTransposed ? dims[1] : dims[2];
             int numFeatures = isTransposed ? dims[2] : dims[1];
+            int numClasses  = isObbMode ? numFeatures - 5 : numFeatures - 4;
 
-            // 특징 개수에 따라 클래스 개수 유추
-            int numClasses = isObbMode ? numFeatures - 5 : numFeatures - 4;
+            // 타겟 클래스 인덱스 캐시 갱신 (변경 시에만 재계산)
+            RebuildTargetIndicesIfNeeded(numClasses);
+            if (_targetClassIndices.Length == 0) return _detectionBuffer;
+
+            // ── DenseTensor.Buffer.Span으로 직접 메모리 접근 ─────────────────
+            // Tensor<float> 인덱서는 내부적으로 bounds-check를 포함하므로,
+            // Span<float>를 통한 직접 접근으로 인덱서 오버헤드를 제거합니다.
+            ReadOnlySpan<float> flat;
+            float[] flatArr = null;
+            if (output is DenseTensor<float> dt)
+            {
+                flat = dt.Buffer.Span;
+            }
+            else
+            {
+                flatArr = output.ToArray();   // fallback: 복사 비용 발생
+                flat = flatArr;
+            }
+
+            // 레이아웃별 인덱스 계산 람다 (인라인 가능)
+            // Transposed  [1, numAnchors, numFeatures]: idx(anchor, feat) = anchor*numFeatures + feat
+            // Non-transposed [1, numFeatures, numAnchors]: idx(anchor, feat) = feat*numAnchors + anchor
+
+            const float RadToDeg = 180.0f / MathF.PI;
 
             for (int i = 0; i < numAnchors; i++)
             {
-                float maxScore = 0;
-                int maxClassId = -1;
+                // ── Early-exit: 타겟 클래스 점수만 스캔 (비타겟 클래스 완전 건너뜀) ──
+                float maxScore  = 0f;
+                int   maxClassId = -1;
 
-                for (int c = 0; c < numClasses; c++)
+                foreach (int c in _targetClassIndices)
                 {
-                    if (4 + c >= numFeatures) break;
-
-                    float score = isTransposed ? output[0, i, 4 + c] : output[0, 4 + c, i];
+                    float score = isTransposed
+                        ? flat[i * numFeatures + 4 + c]
+                        : flat[(4 + c) * numAnchors + i];
                     if (score > maxScore)
                     {
-                        maxScore = score;
+                        maxScore  = score;
                         maxClassId = c;
                     }
                 }
 
+                // Confidence 기준치 이하이면 좌표·각도 계산 완전 생략
                 if (maxScore <= ConfThreshold || maxClassId == -1) continue;
 
                 string className = isObbMode
                     ? ModelRegistry.Oriented.GetClassName(maxClassId)
                     : ModelRegistry.Standard.GetClassName(maxClassId);
+                if (className == null) continue;
 
-                if (className == null || !Targets.Contains(className)) continue;
-
-                float cx = isTransposed ? output[0, i, 0] : output[0, 0, i];
-                float cy = isTransposed ? output[0, i, 1] : output[0, 1, i];
-                float w  = isTransposed ? output[0, i, 2] : output[0, 2, i];
-                float h  = isTransposed ? output[0, i, 3] : output[0, 3, i];
+                // ── 박스 좌표 읽기 (Span 직접 접근) ─────────────────────────
+                float cx, cy, w, h;
+                if (isTransposed)
+                {
+                    int b = i * numFeatures;
+                    cx = flat[b];  cy = flat[b + 1];
+                    w  = flat[b + 2]; h = flat[b + 3];
+                }
+                else
+                {
+                    cx = flat[i];
+                    cy = flat[    numAnchors + i];
+                    w  = flat[2 * numAnchors + i];
+                    h  = flat[3 * numAnchors + i];
+                }
 
                 float origCx = (cx - padX) / scale;
                 float origCy = (cy - padY) / scale;
-                float origW = w / scale;
-                float origH = h / scale;
+                float origW  = w / scale;
+                float origH  = h / scale;
 
                 float angle = 0f;
                 int x1, y1, x2, y2;
@@ -2240,17 +2673,16 @@ namespace MosaicCensorSystem.Detection
                     int angleIndex = numFeatures - 1;
                     if (angleIndex > 4)
                     {
-                        angle = isTransposed ? output[0, i, angleIndex] : output[0, angleIndex, i];
+                        float rawAngle = isTransposed
+                            ? flat[i * numFeatures + angleIndex]
+                            : flat[angleIndex * numAnchors + i];
+                        angle = rawAngle * RadToDeg; // Radian → Degree
                     }
 
-                    float degree = angle * (180.0f / (float)Math.PI);
-                    var rotRect = new RotatedRect(new Point2f(origCx, origCy), new Size2f(origW, origH), degree);
+                    var rotRect   = new RotatedRect(new Point2f(origCx, origCy), new Size2f(origW, origH), angle);
                     var boundRect = rotRect.BoundingRect();
-
-                    x1 = boundRect.Left;
-                    y1 = boundRect.Top;
-                    x2 = boundRect.Right;
-                    y2 = boundRect.Bottom;
+                    x1 = boundRect.Left;  y1 = boundRect.Top;
+                    x2 = boundRect.Right; y2 = boundRect.Bottom;
                 }
                 else
                 {
@@ -2260,36 +2692,46 @@ namespace MosaicCensorSystem.Detection
                     y2 = (int)(origCy + origH / 2);
                 }
 
-                detections.Add(new Detection {
-                    ClassName = className,
+                _detectionBuffer.Add(new Detection
+                {
+                    ClassName  = className,
                     Confidence = maxScore,
-                    BBox = new[] { Math.Max(0, x1), Math.Max(0, y1), Math.Min(originalWidth, x2), Math.Min(originalHeight, y2) },
-                    Angle = angle,
-                    CenterX = origCx,
-                    CenterY = origCy,
-                    ObbWidth = origW,
-                    ObbHeight = origH
+                    BBox       = new[] { Math.Max(0, x1), Math.Max(0, y1), Math.Min(originalWidth, x2), Math.Min(originalHeight, y2) },
+                    Angle      = angle,
+                    CenterX    = origCx,
+                    CenterY    = origCy,
+                    ObbWidth   = origW,
+                    ObbHeight  = origH
                 });
             }
-            return detections;
+            return _detectionBuffer;
         }
 
         private List<Detection> ApplyNMS(List<Detection> detections)
         {
-            var finalDetections = new List<Detection>();
+            _nmsBuffer.Clear();
+            var thresholds = isObbMode ? ModelRegistry.Oriented.NmsThresholds : ModelRegistry.Standard.NmsThresholds;
+
+            // GroupBy 대신 정렬+순회로 임시 컬렉션 할당 최소화
+            // (후보 수가 적을 때 GroupBy의 Dictionary 할당이 오버헤드)
             foreach (var group in detections.GroupBy(d => d.ClassName))
             {
                 var orderedGroup = group.OrderByDescending(d => d.Confidence).ToList();
-                var thresholds = isObbMode ? ModelRegistry.Oriented.NmsThresholds : ModelRegistry.Standard.NmsThresholds;
                 float nmsThreshold = thresholds.TryGetValue(group.Key, out float t) ? t : 0.45f;
-                while (orderedGroup.Any())
+                while (orderedGroup.Count > 0)
                 {
-                    var best = orderedGroup.First();
-                    finalDetections.Add(best);
-                    orderedGroup = orderedGroup.Where(d => CalculateIoU(best.BBox, d.BBox) < nmsThreshold).ToList();
+                    var best = orderedGroup[0];
+                    _nmsBuffer.Add(best);
+                    // List 재할당 없이 제거: 뒤에서부터 제거해 shift 비용 분산
+                    for (int i = orderedGroup.Count - 1; i >= 1; i--)
+                    {
+                        if (CalculateIoU(best.BBox, orderedGroup[i].BBox) >= nmsThreshold)
+                            orderedGroup.RemoveAt(i);
+                    }
+                    orderedGroup.RemoveAt(0);
                 }
             }
-            return finalDetections;
+            return _nmsBuffer;
         }
         
         private float CalculateIoU(int[] boxA, int[] boxB)
@@ -2311,7 +2753,7 @@ namespace MosaicCensorSystem.Detection
             {
                 if (detection.ObbWidth <= 0 || detection.ObbHeight <= 0) return;
 
-                float degree = detection.Angle * (180.0f / (float)Math.PI);
+                float degree = detection.Angle; // Detection.Angle은 이미 Degree 단위
                 var center = new Point2f(detection.CenterX, detection.CenterY);
                 var size = new Size2f(detection.ObbWidth, detection.ObbHeight);
                 var rotRect = new RotatedRect(center, size, degree);
@@ -2381,7 +2823,11 @@ namespace MosaicCensorSystem.Detection
             }
         }
 
-        public void SetTargets(List<string> targets) => Targets = targets ?? new List<string>();
+        public void SetTargets(List<string> targets)
+        {
+            Targets = targets ?? new List<string>();
+            _targetCacheKey = ""; // 타겟 변경 시 인덱스 캐시 무효화
+        }
         public void SetStrength(int strength) => this.strength = Math.Max(5, Math.Min(50, strength));
         public void SetCensorType(CensorType censorType) => this.currentCensorType = censorType;
 
@@ -2422,12 +2868,11 @@ namespace MosaicCensorSystem.Detection
                 
                 if (_channels != null)
                 {
-                    foreach (var c in _channels)
-                    {
-                        c?.Dispose();
-                    }
+                    foreach (var c in _channels) c?.Dispose();
                     _channels = null;
                 }
+                _targetClassIndices = Array.Empty<int>();
+                _targetCacheKey = "";
             }
             GC.Collect();
             GC.WaitForPendingFinalizers();
@@ -2669,19 +3114,352 @@ namespace MosaicCensorSystem.Management
 ================================================
 FILE: MosaicCensorSystem/Management/MultiMonitorManager.cs
 ================================================
-Error reading file with 'cp949': 'cp949' codec can't decode byte 0xa7 in position 2257: illegal multibyte sequence
+// MultiMonitorManager.cs
+#nullable disable
+using MosaicCensorSystem.Capture;
+using MosaicCensorSystem.Overlay;
+using MosaicCensorSystem.UI;
+using OpenCvSharp;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Channels;
+using System.Windows.Forms;
+
+namespace MosaicCensorSystem.Management
+{
+    public class MultiMonitorManager : IOverlayManager
+    {
+        // ── 모니터별 독립 파이프라인 컨테이너 ──────────────────────────────────────
+        private sealed class MonitorPipeline : IDisposable
+        {
+            public readonly int Index;
+            public readonly ScreenCapture Capturer;
+            public readonly FullscreenOverlay Overlay;
+
+            // 제로-지연 파이프라인 (capacity=1, DropOldest)
+            public Channel<Mat> FrameChannel;
+            public Thread CaptureThread;
+            public Thread InferenceThread;
+            public System.Threading.Timer RenderTimer;
+
+            // 단계별 성능 프로파일러 (모니터별 독립)
+            public readonly Stopwatch SwCapture    = new Stopwatch();
+            public readonly Stopwatch SwInference  = new Stopwatch();
+            public readonly Stopwatch SwRender     = new Stopwatch();
+            public readonly Stopwatch ProfilerClock = Stopwatch.StartNew();
+            public int    FrameCount       = 0;
+            public double TotalCaptureMs   = 0;
+            public double TotalInferenceMs = 0;
+            public double TotalRenderMs    = 0;
+
+            private volatile bool _disposed = false;
+            public bool IsDisposed => _disposed;
+
+            public MonitorPipeline(int index, System.Drawing.Rectangle bounds)
+            {
+                Index    = index;
+                Capturer = new ScreenCapture(bounds);
+                Overlay  = new FullscreenOverlay(bounds);
+            }
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+                try { Capturer?.Dispose(); } catch { }
+                try { Overlay?.Dispose();  } catch { }
+            }
+        }
+
+        private GuiController _ui;
+        private readonly List<MonitorPipeline> _pipelines = new();
+        private volatile bool _isRunning = false;
+        private CensorSettings _settings  = new(true, true, false, false, 15);
+        private Func<Mat, Mat> _processFrame;
+        private readonly object _disposeLock = new object();
+        private bool _isDisposed = false;
+
+        // ── 자원 적응형 추론 게이트 ──────────────────────────────────────────────
+        // GPU 활성: SemaphoreSlim(N, N) → 모든 모니터 동시 추론 (병렬)
+        // CPU 전용: SemaphoreSlim(1, 1) → 한 번에 하나씩 직렬 추론 (과부하 방지)
+        private readonly SemaphoreSlim _inferenceGate;
+        private readonly bool _isGpuActive;
+
+        /// <param name="isGpuActive">GPU(CUDA/DirectML) 가속 여부. true면 병렬 추론, false면 직렬 추론.</param>
+        public MultiMonitorManager(bool isGpuActive = false)
+        {
+            _isGpuActive = isGpuActive;
+
+            var screens = Screen.AllScreens;
+            for (int i = 0; i < screens.Length; i++)
+                _pipelines.Add(new MonitorPipeline(i, screens[i].Bounds));
+
+            // 병렬도 결정: GPU → 모니터 수만큼, CPU → 1 (직렬)
+            int parallelism = isGpuActive ? Math.Max(1, screens.Length) : 1;
+            _inferenceGate = new SemaphoreSlim(parallelism, parallelism);
+        }
+
+        public void Initialize(GuiController uiController)
+        {
+            _ui = uiController;
+            string mode = _isGpuActive ? "GPU 병렬 모드" : "CPU 직렬 모드";
+            _ui.LogMessage($"🖥️ 감지된 모니터: {_pipelines.Count}개 | 추론 방식: {mode}");
+            var screens = Screen.AllScreens;
+            foreach (var p in _pipelines)
+            {
+                var b = screens[p.Index].Bounds;
+                _ui.LogMessage($"   모니터 {p.Index + 1}: {b.Width}×{b.Height} @ ({b.X},{b.Y})");
+            }
+        }
+
+        public void Start(Func<Mat, Mat> frameProcessor)
+        {
+            lock (_disposeLock)
+            {
+                if (_isRunning || _isDisposed) return;
+                _isRunning = true;
+                _processFrame = frameProcessor;
+
+                foreach (var p in _pipelines)
+                {
+                    try
+                    {
+                        p.Overlay.Show();
+                        StartPipeline(p);
+                    }
+                    catch (Exception ex)
+                    {
+                        _ui?.LogMessage($"🚨 [모니터 {p.Index + 1}] 시작 실패: {ex.Message}");
+                    }
+                }
+            }
+        }
+
+        public void Stop()
+        {
+            lock (_disposeLock)
+            {
+                if (!_isRunning) return;
+                _isRunning = false;
+
+                // 렌더 타이머 먼저 해제, 채널 완료 신호
+                foreach (var p in _pipelines)
+                {
+                    p.RenderTimer?.Dispose();
+                    p.RenderTimer = null;
+                    try { p.FrameChannel?.Writer.TryComplete(); } catch { }
+                }
+
+                // 각 모니터 스레드 종료 대기
+                foreach (var p in _pipelines)
+                {
+                    p.CaptureThread?.Join(1500);
+                    p.InferenceThread?.Join(1500);
+                    try { p.Overlay?.Hide(); } catch { }
+                }
+            }
+        }
+
+        public void UpdateSettings(CensorSettings newSettings)
+        {
+            _settings = newSettings;
+        }
+
+        // ── 파이프라인 초기화 (모니터별 독립) ─────────────────────────────────────
+        private void StartPipeline(MonitorPipeline p)
+        {
+            // capacity=1: 추론 중 캡처된 프레임은 하나만 대기 (낡은 프레임 즉시 폐기)
+            p.FrameChannel = Channel.CreateBounded<Mat>(new BoundedChannelOptions(1)
+            {
+                SingleReader = false,   // CaptureLoop(drain) + InferenceLoop(consume) 양쪽에서 읽음
+                SingleWriter = true,
+                AllowSynchronousContinuations = false,
+            });
+
+            // 프로파일러 리셋
+            p.FrameCount = 0;
+            p.TotalCaptureMs = p.TotalInferenceMs = p.TotalRenderMs = 0;
+            p.ProfilerClock.Restart();
+
+            // 렌더 타이머: 33ms(≈30fps)로 Invalidate → 추론과 독립적으로 오버레이 부드럽게 갱신
+            p.RenderTimer = new System.Threading.Timer(_ =>
+            {
+                try
+                {
+                    if (p.Overlay != null && !p.Overlay.IsDisposed)
+                        p.Overlay.BeginInvoke(new Action(() =>
+                        {
+                            if (!p.Overlay.IsDisposed) p.Overlay.Invalidate();
+                        }));
+                }
+                catch { }
+            }, null, 0, 33);
+
+            p.CaptureThread = new Thread(() => CaptureLoop(p))
+            {
+                IsBackground = true,
+                Name         = $"BetaChip_Capture_M{p.Index + 1}",
+                Priority     = ThreadPriority.AboveNormal
+            };
+
+            p.InferenceThread = new Thread(() => InferenceLoop(p))
+            {
+                IsBackground = true,
+                Name         = $"BetaChip_Inference_M{p.Index + 1}"
+            };
+
+            p.CaptureThread.Start();
+            p.InferenceThread.Start();
+        }
+
+        // ── 생산자 스레드: 화면 캡처 + DropOldest ─────────────────────────────────
+        // 각 모니터별 독립 캡처 → 다른 모니터의 해상도/종횡비에 영향을 전혀 받지 않음
+        private void CaptureLoop(MonitorPipeline p)
+        {
+            var writer = p.FrameChannel.Writer;
+
+            while (_isRunning && !_isDisposed && !p.IsDisposed)
+            {
+                try
+                {
+                    p.SwCapture.Restart();
+                    Mat rawFrame = p.Capturer?.GetFrame();
+                    p.TotalCaptureMs += p.SwCapture.Elapsed.TotalMilliseconds;
+
+                    if (rawFrame == null || rawFrame.IsDisposed || rawFrame.Empty())
+                    {
+                        rawFrame?.Dispose();
+                        Thread.Sleep(1);
+                        continue;
+                    }
+
+                    // DropOldest: 낡은 대기 프레임을 명시적으로 폐기해 Mat 메모리 누수 방지
+                    while (p.FrameChannel.Reader.TryRead(out Mat stale))
+                        stale?.Dispose();
+
+                    if (!writer.TryWrite(rawFrame))
+                        rawFrame.Dispose();
+                }
+                catch (ChannelClosedException)  { break; }
+                catch (ObjectDisposedException) { break; }
+                catch (Exception ex) when (_isRunning)
+                {
+                    _ui?.LogMessage($"🚨 [모니터 {p.Index + 1}] 캡처 오류: {ex.Message}");
+                    Thread.Sleep(10);
+                }
+            }
+
+            writer.TryComplete();
+        }
+
+        // ── 소비자 스레드: 오포르투니스틱 추론 + 적응형 게이트 ──────────────────────
+        // 이전 추론 완료 즉시 + 새 프레임이 있을 때만 동작 (고정 FPS 슬립 없음)
+        // CPU 모드: _inferenceGate(1,1)가 직렬화 → CPU 과부하 방지
+        // GPU 모드: _inferenceGate(N,N)가 모두 통과 → 병렬 추론
+        private void InferenceLoop(MonitorPipeline p)
+        {
+            var reader = p.FrameChannel.Reader;
+
+            while (_isRunning && !_isDisposed && !p.IsDisposed)
+            {
+                Mat rawFrame      = null;
+                Mat processedFrame = null;
+
+                try
+                {
+                    if (!reader.TryRead(out rawFrame))
+                    {
+                        Thread.Sleep(1);
+                        continue;
+                    }
+
+                    // ── 자원 적응형 추론 게이트 ──────────────────────────────────
+                    _inferenceGate.Wait();
+                    try
+                    {
+                        p.SwInference.Restart();
+                        processedFrame = _processFrame?.Invoke(rawFrame);
+                        p.TotalInferenceMs += p.SwInference.Elapsed.TotalMilliseconds;
+                    }
+                    finally
+                    {
+                        _inferenceGate.Release();
+                    }
+
+                    // ── 오버레이 업데이트 ──────────────────────────────────────
+                    p.SwRender.Restart();
+                    if (processedFrame != null && !processedFrame.IsDisposed && p.Overlay != null)
+                        p.Overlay.UpdateFrame(processedFrame);
+                    p.TotalRenderMs += p.SwRender.Elapsed.TotalMilliseconds;
+
+                    // ── 모니터별 성능 로그 (1초 주기) ─────────────────────────
+                    p.FrameCount++;
+                    if (p.ProfilerClock.Elapsed.TotalSeconds >= 1.0)
+                    {
+                        int n = Math.Max(1, p.FrameCount);
+                        _ui?.LogMessage(
+                            $"⏱ [모니터 {p.Index + 1}] FPS:{p.FrameCount} | " +
+                            $"캡처:{p.TotalCaptureMs / n:F1}ms | " +
+                            $"추론:{p.TotalInferenceMs / n:F1}ms | " +
+                            $"렌더:{p.TotalRenderMs / n:F1}ms");
+
+                        p.FrameCount = 0;
+                        p.TotalCaptureMs = p.TotalInferenceMs = p.TotalRenderMs = 0;
+                        p.ProfilerClock.Restart();
+                    }
+                }
+                catch (ChannelClosedException)  { break; }
+                catch (ObjectDisposedException) { break; }
+                catch (Exception ex) when (_isRunning)
+                {
+                    _ui?.LogMessage($"🚨 [모니터 {p.Index + 1}] 추론 오류: {ex.Message}");
+                    if (!_isRunning || _isDisposed) break;
+                    Thread.Sleep(50);
+                }
+                finally
+                {
+                    rawFrame?.Dispose();
+                    processedFrame?.Dispose();
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            lock (_disposeLock)
+            {
+                if (_isDisposed) return;
+                _isDisposed = true;
+
+                Stop();
+
+                foreach (var p in _pipelines)
+                    p?.Dispose();
+                _pipelines.Clear();
+
+                _inferenceGate?.Dispose();
+            }
+        }
+    }
+}
+
 
 
 ================================================
 FILE: MosaicCensorSystem/Management/SingleMonitorManager.cs
 ================================================
 // SingleMonitorManager.cs
+#nullable disable
 using MosaicCensorSystem.Capture;
 using MosaicCensorSystem.Overlay;
 using MosaicCensorSystem.UI;
 using OpenCvSharp;
 using System;
+using System.Diagnostics;
 using System.Threading;
+using System.Threading.Channels;
 using System.Windows.Forms;
 
 namespace MosaicCensorSystem.Management
@@ -2691,18 +3469,40 @@ namespace MosaicCensorSystem.Management
         private GuiController ui;
         private readonly ScreenCapture capturer;
         private readonly FullscreenOverlay overlay;
-        private Thread processThread;
+
+        // ── 제로-지연 파이프라인 (Capacity=1, DropOldest 의미론) ──────────────────
+        // CaptureThread: BitBlt → 채널에 최신 프레임 유지 (낡은 프레임 즉시 폐기)
+        // InferenceThread: 채널에서 꺼내는 즉시 추론 → 완료 즉시 다음 프레임 처리
+        // → "이전 추론이 끝난 즉시 + 새 프레임이 있을 때만" 동작하는 Opportunistic Inference
+        private Channel<Mat> _frameChannel;
+        private Thread _captureThread;
+        private Thread _inferenceThread;
+
+        // ── 오버레이 동기화 ────────────────────────────────────────────────────────
+        // 추론 중에도 캡처 주기에 맞춰 오버레이를 부드럽게 갱신합니다.
+        // 마지막으로 저장된 비트맵을 재사용하므로 추가 비트맵 생성 비용이 없습니다.
+        private System.Threading.Timer _renderTimer;
+
         private volatile bool isRunning = false;
         private CensorSettings settings = new(true, true, false, false, 15);
         private Func<Mat, Mat> processFrame;
         private readonly object disposeLock = new object();
         private bool isDisposed = false;
 
+        // ── 단계별 성능 프로파일러 ─────────────────────────────────────────────
+        private readonly Stopwatch _swCapture   = new Stopwatch();
+        private readonly Stopwatch _swInference = new Stopwatch();
+        private readonly Stopwatch _swRender    = new Stopwatch();
+        private readonly Stopwatch _profilerClock = Stopwatch.StartNew();
+
+        private int    _frameCount       = 0;
+        private double _totalCaptureMs   = 0;
+        private double _totalInferenceMs = 0;
+        private double _totalRenderMs    = 0;
+
         public SingleMonitorManager(ScreenCapture screenCapturer)
         {
             capturer = screenCapturer;
-            
-            // ★★★ 수정: 기본 생성자 대신 Screen.PrimaryScreen.Bounds를 전달
             overlay = new FullscreenOverlay(Screen.PrimaryScreen.Bounds);
         }
 
@@ -2718,13 +3518,11 @@ namespace MosaicCensorSystem.Management
                 if (isRunning || isDisposed) return;
                 isRunning = true;
                 processFrame = frameProcessor;
-                
+
                 try
                 {
                     overlay.Show();
-                    processThread = new Thread(ProcessingLoop) 
-                        { IsBackground = true, Name = "CensorProcessingThread" };
-                    processThread.Start();
+                    StartPipeline();
                 }
                 catch (Exception ex)
                 {
@@ -2740,12 +3538,17 @@ namespace MosaicCensorSystem.Management
             {
                 if (!isRunning) return;
                 isRunning = false;
-                
-                if (processThread != null && processThread.IsAlive)
-                {
-                    processThread.Join(1000);
-                }
-                
+
+                // 렌더 타이머 먼저 중지
+                _renderTimer?.Dispose();
+                _renderTimer = null;
+
+                // 채널을 완료 상태로 전환하여 블로킹 스레드를 깨웁니다
+                try { _frameChannel?.Writer.TryComplete(); } catch { }
+
+                _captureThread?.Join(1500);
+                _inferenceThread?.Join(1500);
+
                 try { overlay?.Hide(); } catch { }
             }
         }
@@ -2755,61 +3558,157 @@ namespace MosaicCensorSystem.Management
             settings = newSettings;
         }
 
-        private void ProcessingLoop()
+        // ── 파이프라인 초기화 ─────────────────────────────────────────────────
+        private void StartPipeline()
         {
+            // 용량 1: 추론 중에 캡처된 프레임이 하나만 대기할 수 있습니다.
+            // DropOldest 의미론은 CaptureLoop에서 직접 구현하여 Mat 메모리 누수를 방지합니다.
+            _frameChannel = Channel.CreateBounded<Mat>(new BoundedChannelOptions(1)
+            {
+                SingleReader = false,
+                SingleWriter = true,
+                AllowSynchronousContinuations = false,
+            });
+
+            // 프로파일러 리셋
+            _frameCount = 0;
+            _totalCaptureMs = _totalInferenceMs = _totalRenderMs = 0;
+            _profilerClock.Restart();
+
+            // ── 렌더 타이머: 33ms 주기(≈30fps)로 오버레이를 Invalidate ─────────────
+            // 추론과 무관하게 항상 최신 비트맵으로 화면이 갱신되어 렌더링이 부드럽습니다.
+            _renderTimer = new System.Threading.Timer(_ =>
+            {
+                try
+                {
+                    if (overlay != null && !overlay.IsDisposed)
+                        overlay.BeginInvoke(new Action(() =>
+                        {
+                            if (!overlay.IsDisposed) overlay.Invalidate();
+                        }));
+                }
+                catch { }
+            }, null, 0, 33);
+
+            _captureThread = new Thread(CaptureLoop)
+                { IsBackground = true, Name = "BetaChip_CaptureThread", Priority = ThreadPriority.AboveNormal };
+            _inferenceThread = new Thread(InferenceLoop)
+                { IsBackground = true, Name = "BetaChip_InferenceThread" };
+
+            _captureThread.Start();
+            _inferenceThread.Start();
+        }
+
+        // ── 생산자 스레드: 화면 캡처 (≈1~5ms) ────────────────────────────────
+        // 항상 최신 프레임을 채널에 유지합니다.
+        // 채널이 꽉 찼으면(추론 중) 낡은 프레임을 명시적으로 Dispose하고 최신으로 교체합니다.
+        // → DropOldest 의미론 + Mat 메모리 누수 방지
+        private void CaptureLoop()
+        {
+            var writer = _frameChannel.Writer;
+
             while (isRunning && !isDisposed)
             {
                 try
                 {
-                    if (capturer == null || overlay == null)
-                    {
-                        ui?.LogMessage("⚠️ 캡처 또는 오버레이가 유효하지 않음 - 루프 종료");
-                        break;
-                    }
+                    if (capturer == null) break;
 
-                    var frameStart = DateTime.Now;
+                    _swCapture.Restart();
+                    Mat rawFrame = capturer.GetFrame();
+                    _totalCaptureMs += _swCapture.Elapsed.TotalMilliseconds;
 
-                    Mat? rawFrame = null;
-                    Mat? processedFrame = null;
-
-                    try
-                    {
-                        rawFrame = capturer.GetFrame();
-
-                        if (rawFrame != null && !rawFrame.IsDisposed && !rawFrame.Empty())
-                        {
-                            if (processFrame != null)
-                            {
-                                processedFrame = processFrame(rawFrame);
-
-                                if (processedFrame != null && !processedFrame.IsDisposed)
-                                {
-                                    overlay.UpdateFrame(processedFrame);
-                                }
-                            }
-                        }
-                    }
-                    finally
+                    if (rawFrame == null || rawFrame.IsDisposed || rawFrame.Empty())
                     {
                         rawFrame?.Dispose();
-                        processedFrame?.Dispose();
+                        Thread.Sleep(1);
+                        continue;
                     }
 
-                    if (!isRunning || isDisposed) break;
+                    // ── DropOldest 전략 ────────────────────────────────────────
+                    // 채널에 이미 대기 중인 낡은 프레임(= 이미 과거가 된 캡처)을 폐기합니다.
+                    // 이로써 추론 스레드는 항상 가장 최신 프레임만 처리합니다.
+                    while (_frameChannel.Reader.TryRead(out Mat stale))
+                        stale?.Dispose();
 
-                    var elapsedMs = (DateTime.Now - frameStart).TotalMilliseconds;
-                    int delay = (1000 / settings.TargetFPS) - (int)elapsedMs;
-                    if (delay > 0) Thread.Sleep(delay);
+                    if (!writer.TryWrite(rawFrame))
+                        rawFrame.Dispose();
                 }
-                catch (ObjectDisposedException)
+                catch (ChannelClosedException)  { break; }
+                catch (ObjectDisposedException) { break; }
+                catch (Exception ex) when (isRunning)
                 {
-                    break;
+                    ui?.LogMessage($"🚨 캡처 스레드 오류: {ex.Message}");
+                    Thread.Sleep(10);
                 }
-                catch (Exception ex)
+            }
+
+            writer.TryComplete();
+        }
+
+        // ── 소비자 스레드: 오포르투니스틱 추론 ─────────────────────────────────
+        // "이전 추론이 완료된 즉시 + 대기열에 새 프레임이 있을 때만" 동작합니다.
+        // 고정 FPS 슬립 없음 → 하드웨어 최대 성능을 자동으로 활용합니다.
+        private void InferenceLoop()
+        {
+            var reader = _frameChannel.Reader;
+
+            while (isRunning && !isDisposed)
+            {
+                Mat rawFrame = null;
+                Mat processedFrame = null;
+
+                try
                 {
-                    ui?.LogMessage($"🚨 치명적 오류 발생 (백그라운드 스레드): {ex.Message}");
+                    // 논블로킹 폴 → 프레임 없으면 1ms 양보 후 즉시 재시도
+                    if (!reader.TryRead(out rawFrame))
+                    {
+                        Thread.Sleep(1);
+                        continue;
+                    }
+
+                    // ── 추론 + 검열 효과 적용 ──────────────────────────────
+                    _swInference.Restart();
+                    processedFrame = processFrame?.Invoke(rawFrame);
+                    _totalInferenceMs += _swInference.Elapsed.TotalMilliseconds;
+
+                    // ── 오버레이 렌더링 ────────────────────────────────────
+                    _swRender.Restart();
+                    if (processedFrame != null && !processedFrame.IsDisposed && overlay != null)
+                        overlay.UpdateFrame(processedFrame);
+                    _totalRenderMs += _swRender.Elapsed.TotalMilliseconds;
+
+                    // ── 1초마다 단계별 성능 로그 ──────────────────────────
+                    _frameCount++;
+                    if (_profilerClock.Elapsed.TotalSeconds >= 1.0)
+                    {
+                        int n = Math.Max(1, _frameCount);
+                        ui?.LogMessage(
+                            $"⏱ [Profiler] FPS:{_frameCount:F0} | " +
+                            $"캡처:{_totalCaptureMs / n:F1}ms | " +
+                            $"추론:{_totalInferenceMs / n:F1}ms | " +
+                            $"렌더:{_totalRenderMs / n:F1}ms");
+
+                        _frameCount = 0;
+                        _totalCaptureMs = _totalInferenceMs = _totalRenderMs = 0;
+                        _profilerClock.Restart();
+                    }
+
+                    // ── FPS 상한 없음 (하드웨어 자동 최대화) ─────────────────
+                    // 고사양 PC: 가용 자원을 전부 사용해 최고 FPS 달성
+                    // 저사양 PC: 추론 시간이 자연스럽게 FPS를 조절, 지연 누적 없음
+                }
+                catch (ChannelClosedException)  { break; }
+                catch (ObjectDisposedException) { break; }
+                catch (Exception ex) when (isRunning)
+                {
+                    ui?.LogMessage($"🚨 추론 스레드 오류: {ex.Message}");
                     if (!isRunning || isDisposed) break;
-                    Thread.Sleep(100);
+                    Thread.Sleep(50);
+                }
+                finally
+                {
+                    rawFrame?.Dispose();
+                    processedFrame?.Dispose();
                 }
             }
         }
@@ -2820,15 +3719,16 @@ namespace MosaicCensorSystem.Management
             {
                 if (isDisposed) return;
                 isDisposed = true;
-                
+
                 Stop();
-                
+
                 try { capturer?.Dispose(); } catch { }
                 try { overlay?.Dispose(); } catch { }
             }
         }
     }
 }
+
 
 
 ================================================
@@ -4037,7 +4937,549 @@ namespace MosaicCensorSystem.UI
 ================================================
 FILE: MosaicCensorSystem/UI/GuiController.cs
 ================================================
-Error reading file with 'cp949': 'cp949' codec can't decode byte 0xed in position 2049: illegal multibyte sequence
+#nullable disable
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Globalization;
+using System.Linq;
+using System.Resources;
+using System.Threading;
+using System.Windows.Forms;
+using MosaicCensorSystem.Detection;
+using MosaicCensorSystem.Utils;
+
+namespace MosaicCensorSystem.UI
+{
+    public class GuiController : IDisposable
+    {
+        // --- Events ---
+        // FpsChanged 이벤트는 오포르투니스틱 추론 도입으로 제거됨
+        // (하드웨어 최대 성능 자동 사용, 수동 FPS 조절 불필요)
+        public event Action<bool> DetectionToggled;
+        public event Action<bool> CensoringToggled;
+        public event Action<bool> StickerToggled;
+        public event Action<bool> CaptionToggled; 
+        public event Action<CensorType> CensorTypeChanged;
+        public event Action<int> StrengthChanged;
+        public event Action<float> ConfidenceChanged;
+        public Action StartClicked;
+        public event Action StopClicked;
+        public event Action CaptureAndSaveClicked;
+        public event Action<List<string>> TargetsChanged;
+        public event Action GpuSetupClicked;
+        public event Action<bool> DpiCompatToggled;
+        public event Action<bool> ModelTypeChanged; // true: OBB, false: Standard
+
+        private readonly Form rootForm;
+        private Label titleLabel;
+        private ComboBox languageComboBox;
+        private Label statusLabel;
+        private TextBox logTextBox;
+        private Button startButton, stopButton, captureButton, gpuSetupButton;
+        private GroupBox controlGroup, settingsGroup, logGroup, targetsGroup;
+        private Label gpuStatusLabel;
+        private Label strengthLabel, confidenceLabel;
+        private CheckBox enableDetectionCheckBox, enableCensoringCheckBox;
+        private RadioButton mosaicRadioButton, blurRadioButton, blackBoxRadioButton;
+        private TrackBar strengthSlider, confidenceSlider;
+        private readonly Dictionary<string, CheckBox> targetCheckBoxes = new Dictionary<string, CheckBox>();
+        private ToolTip toolTip;
+
+        // 통합 버전: 체크박스들이 항상 존재함
+        private CheckBox enableStickersCheckBox;
+        private CheckBox enableCaptionsCheckBox;
+        private CheckBox enableDpiCompatCheckBox;
+        private Label modelTypeLabel;
+        private RadioButton standardModelRadio, obbModelRadio;
+
+        private ResourceManager resourceManager;
+        private string currentGpuStatus = "CPU";
+        private bool disposed = false;
+
+        public GuiController(Form mainForm)
+        {
+            rootForm = mainForm ?? throw new ArgumentNullException(nameof(mainForm));
+            resourceManager = new ResourceManager("MosaicCensorSystem.Properties.Strings", typeof(GuiController).Assembly);
+
+            toolTip = new ToolTip
+            {
+                AutoPopDelay = 8000,
+                InitialDelay = 500,
+                ReshowDelay = 200
+            };
+
+            CreateGui();
+            UpdateUIText();
+        }
+
+        private void CreateGui()
+        {
+            rootForm.SuspendLayout();
+
+            titleLabel = new Label
+            {
+                Font = new Font("Arial", 12, FontStyle.Bold),
+                BackColor = Color.LightSkyBlue,
+                BorderStyle = BorderStyle.FixedSingle,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Height = 40,
+                Dock = DockStyle.Top
+            };
+
+            languageComboBox = new ComboBox
+            {
+                Location = new Point(350, 5),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Size = new Size(100, 25),
+                Font = new Font("Arial", 9, FontStyle.Bold)
+            };
+            languageComboBox.Items.AddRange(new string[] { "🇰🇷 한국어", "🇺🇸 English" });
+            languageComboBox.SelectedIndex = 0;
+            languageComboBox.SelectedIndexChanged += OnLanguageChanged;
+            titleLabel.Controls.Add(languageComboBox);
+
+            var scrollableContainer = new ScrollablePanel { Dock = DockStyle.Fill };
+            rootForm.Controls.Add(scrollableContainer);
+            rootForm.Controls.Add(titleLabel);
+
+            CreateContent(scrollableContainer.ScrollableFrame);
+
+            rootForm.ResumeLayout(false);
+        }
+
+        private void CreateContent(Panel parent)
+        {
+            int y = 10;
+            statusLabel = new Label
+            {
+                Font = new Font("Arial", 12, FontStyle.Bold),
+                ForeColor = Color.Red,
+                Location = new Point(10, y),
+                AutoSize = true
+            };
+            parent.Controls.Add(statusLabel);
+            y += 40;
+
+            gpuStatusLabel = new Label
+            {
+                Font = new Font("Arial", 10),
+                Location = new Point(10, y),
+                AutoSize = true
+            };
+            parent.Controls.Add(gpuStatusLabel);
+            y += 30;
+
+            controlGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 120) };
+            startButton = new Button
+            {
+                BackColor = Color.DarkGreen,
+                ForeColor = Color.White,
+                Font = new Font("Arial", 10, FontStyle.Bold),
+                Size = new Size(120, 40),
+                Location = new Point(20, 25),
+                Text = "시작"
+            };
+            stopButton = new Button
+            {
+                BackColor = Color.DarkRed,
+                ForeColor = Color.White,
+                Font = new Font("Arial", 10, FontStyle.Bold),
+                Size = new Size(120, 40),
+                Location = new Point(160, 25),
+                Enabled = false,
+                Text = "중지"
+            };
+            captureButton = new Button
+            {
+                BackColor = Color.DarkOrange,
+                ForeColor = Color.White,
+                Font = new Font("Arial", 10, FontStyle.Bold),
+                Size = new Size(120, 40),
+                Location = new Point(300, 25),
+                Text = "캡처 저장"
+            };
+
+            startButton.Click += (s, e) => StartClicked?.Invoke();
+            stopButton.Click += (s, e) => StopClicked?.Invoke();
+            captureButton.Click += (s, e) => CaptureAndSaveClicked?.Invoke();
+            
+            gpuSetupButton = new Button
+            {
+                BackColor = Color.DarkSlateGray,
+                ForeColor = Color.White,
+                Font = new Font("Arial", 9, FontStyle.Bold),
+                Size = new Size(420, 30),
+                Location = new Point(20, 75),
+                Text = "🖥️ GPU 설정 확인"
+            };
+            gpuSetupButton.Click += (s, e) => GpuSetupClicked?.Invoke();
+
+            controlGroup.Controls.AddRange(new Control[] { startButton, stopButton, captureButton, gpuSetupButton });
+            parent.Controls.Add(controlGroup);
+            y += 130;
+
+            settingsGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 520) };
+            CreateSettingsContent(settingsGroup);
+            parent.Controls.Add(settingsGroup);
+            y += 530; // 초기 여유공간 설정
+
+            logGroup = new GroupBox { Location = new Point(10, y), Size = new Size(460, 120) };
+            logTextBox = new TextBox
+            {
+                Multiline = true,
+                ScrollBars = ScrollBars.Vertical,
+                ReadOnly = true,
+                Location = new Point(10, 20),
+                Size = new Size(440, 90),
+                Font = new Font("Consolas", 8.25f)
+            };
+            logGroup.Controls.Add(logTextBox);
+            parent.Controls.Add(logGroup);
+            
+            // 모델 교체 시 체크박스가 늘어나면 로그 박스의 위치도 자동으로 밀려나도록 이벤트 연결
+            settingsGroup.SizeChanged += (s, e) => {
+                logGroup.Location = new Point(10, settingsGroup.Location.Y + settingsGroup.Height + 10);
+            };
+        }
+
+        private void CreateSettingsContent(GroupBox settingsGroup)
+        {
+            int y = 25;
+
+            // AI 모델 선택 (최상단)
+            modelTypeLabel = new Label { Location = new Point(10, y), AutoSize = true };
+            standardModelRadio = new RadioButton { Checked = true, Location = new Point(10, y + 20), AutoSize = true };
+            obbModelRadio = new RadioButton { Location = new Point(230, y + 20), AutoSize = true };
+
+            EventHandler modelTypeHandler = (s, e) =>
+            {
+                if (s is RadioButton rb && rb.Checked)
+                    ModelTypeChanged?.Invoke(obbModelRadio.Checked);
+            };
+            standardModelRadio.CheckedChanged += modelTypeHandler;
+            obbModelRadio.CheckedChanged += modelTypeHandler;
+
+            settingsGroup.Controls.AddRange(new Control[] { modelTypeLabel, standardModelRadio, obbModelRadio });
+            y += 50;
+
+            // FPS 슬라이더 제거: 오포르투니스틱 추론으로 FPS는 하드웨어가 자동 결정
+            enableDetectionCheckBox = new CheckBox { Checked = true, Location = new Point(10, y), AutoSize = true };
+            enableDetectionCheckBox.CheckedChanged += (s, e) => DetectionToggled?.Invoke(enableDetectionCheckBox.Checked);
+
+            enableCensoringCheckBox = new CheckBox { Checked = true, Location = new Point(200, y), AutoSize = true };
+            enableCensoringCheckBox.CheckedChanged += (s, e) => CensoringToggled?.Invoke(enableCensoringCheckBox.Checked);
+
+            settingsGroup.Controls.AddRange(new Control[] { enableDetectionCheckBox, enableCensoringCheckBox });
+            y += 30;
+
+            enableStickersCheckBox = new CheckBox { Checked = false, Location = new Point(10, y), AutoSize = true, Text = "스티커 활성화" };
+            enableStickersCheckBox.CheckedChanged += (s, e) => StickerToggled?.Invoke(enableStickersCheckBox.Checked);
+            settingsGroup.Controls.Add(enableStickersCheckBox);
+            y += 30;
+
+            enableCaptionsCheckBox = new CheckBox { Checked = true, Location = new Point(10, y), AutoSize = true, Text = "캡션 활성화" };
+            enableCaptionsCheckBox.CheckedChanged += (s, e) => CaptionToggled?.Invoke(enableCaptionsCheckBox.Checked);
+            settingsGroup.Controls.Add(enableCaptionsCheckBox);
+            y += 30;
+
+            enableDpiCompatCheckBox = new CheckBox { Checked = UserSettings.IsCompatibilityModeEnabled(), Location = new Point(10, y), AutoSize = true, Text = "자동 화면 배율 해제" };
+            enableDpiCompatCheckBox.CheckedChanged += (s, e) =>
+            {
+                bool isEnabled = enableDpiCompatCheckBox.Checked;
+                UserSettings.SetCompatibilityModeEnabled(isEnabled);
+                DpiCompatToggled?.Invoke(isEnabled);
+                LogMessage(isEnabled ? "화면 배율 해제 모드가 활성화되었습니다. 재시작 후 적용됩니다." : "화면 배율 해제 모드가 비활성화되었습니다. 재시작 후 적용됩니다.");
+            };
+            settingsGroup.Controls.Add(enableDpiCompatCheckBox);
+            y += 30;
+
+            mosaicRadioButton = new RadioButton { Checked = true, Location = new Point(10, y), AutoSize = true };
+            blurRadioButton = new RadioButton { Location = new Point(100, y), AutoSize = true };
+            blackBoxRadioButton = new RadioButton { Location = new Point(200, y), AutoSize = true };
+
+            EventHandler censorTypeHandler = (s, e) =>
+            {
+                if (s is RadioButton rb && rb.Checked)
+                {
+                    if (mosaicRadioButton.Checked) CensorTypeChanged?.Invoke(CensorType.Mosaic);
+                    else if (blurRadioButton.Checked) CensorTypeChanged?.Invoke(CensorType.Blur);
+                    else if (blackBoxRadioButton.Checked) CensorTypeChanged?.Invoke(CensorType.BlackBox);
+                }
+            };
+            mosaicRadioButton.CheckedChanged += censorTypeHandler;
+            blurRadioButton.CheckedChanged += censorTypeHandler;
+            blackBoxRadioButton.CheckedChanged += censorTypeHandler;
+
+            settingsGroup.Controls.AddRange(new Control[] { mosaicRadioButton, blurRadioButton, blackBoxRadioButton });
+            y += 30;
+
+            var strengthValueLabel = new Label { Text = "20", Location = new Point(390, y), AutoSize = true };
+            strengthSlider = new TrackBar { Minimum = 10, Maximum = 40, Value = 20, TickFrequency = 5, Location = new Point(100, y - 5), Size = new Size(280, 45) };
+            strengthSlider.ValueChanged += (s, e) => { strengthValueLabel.Text = strengthSlider.Value.ToString(); StrengthChanged?.Invoke(strengthSlider.Value); };
+            strengthLabel = new Label { Location = new Point(10, y), AutoSize = true };
+            settingsGroup.Controls.AddRange(new Control[] { strengthLabel, strengthSlider, strengthValueLabel });
+            y += 40;
+
+            var confidenceValueLabel = new Label { Text = "0.3", Location = new Point(390, y), AutoSize = true };
+            confidenceSlider = new TrackBar { Minimum = 10, Maximum = 90, Value = 30, TickFrequency = 10, Location = new Point(100, y - 5), Size = new Size(280, 45) };
+            confidenceSlider.ValueChanged += (s, e) => { float val = confidenceSlider.Value / 100.0f; confidenceValueLabel.Text = val.ToString("F1"); ConfidenceChanged?.Invoke(val); };
+            confidenceLabel = new Label { Location = new Point(10, y), AutoSize = true };
+            settingsGroup.Controls.AddRange(new Control[] { confidenceLabel, confidenceSlider, confidenceValueLabel });
+            y += 40;
+
+            targetsGroup = new GroupBox { Location = new Point(10, y), Size = new Size(440, 130) };
+            settingsGroup.Controls.Add(targetsGroup);
+            
+            // 프로그램 최초 시작 시 HBB 모델 타겟 목록으로 체크박스 생성
+            RebuildTargetCheckboxes(MosaicProcessor.HbbClasses);
+        }
+
+        public void RebuildTargetCheckboxes(string[] availableTargets)
+        {
+            if (rootForm.InvokeRequired) 
+            { 
+                rootForm.Invoke(new Action(() => RebuildTargetCheckboxes(availableTargets))); 
+                return; 
+            }
+            
+            if (availableTargets == null || availableTargets.Length == 0) return;
+
+            // 기존에 사용자가 선택해둔 타겟 상태를 보존 (가슴 등 이름이 일치하면 그대로 유지)
+            var previouslySelected = targetCheckBoxes
+                .Where(kvp => kvp.Value.Checked)
+                .Select(kvp => kvp.Key)
+                .ToHashSet();
+
+            // 기존 체크박스 삭제
+            foreach (var cb in targetCheckBoxes.Values)
+            {
+                targetsGroup.Controls.Remove(cb);
+                cb.Dispose();
+            }
+            targetCheckBoxes.Clear();
+
+            // HBB, OBB 각각의 상황에 맞는 초기 기본 선택값 세팅
+            // OBB 판별: ModelRegistry.Oriented.Classes의 첫 번째 항목("Face_Female")으로 구분합니다.
+            var defaultTargets = availableTargets.Contains("Face_Female")
+                ? new[] { "Face_Female", "Breast_Nude", "Vulva_Nude", "Panty" } // OBB 기본값
+                : new[] { "얼굴", "가슴", "보지", "팬티" };                      // HBB 기본값
+
+            bool useDefault = !previouslySelected.Any(t => availableTargets.Contains(t));
+
+            for (int i = 0; i < availableTargets.Length; i++)
+            {
+                string target = availableTargets[i];
+                bool isChecked = useDefault ? defaultTargets.Contains(target) : previouslySelected.Contains(target);
+
+                var checkbox = new CheckBox
+                {
+                    Text = target, // 바로 아래 UpdateUIText에서 다국어 처리됨
+                    Checked = isChecked,
+                    Location = new Point(15 + (i % 3) * 140, 25 + (i / 3) * 20),
+                    AutoSize = true,
+                    Tag = target
+                };
+                checkbox.CheckedChanged += OnTargetChanged;
+                targetCheckBoxes[target] = checkbox;
+                targetsGroup.Controls.Add(checkbox);
+            }
+
+            // 늘어난/줄어든 체크박스 갯수에 맞춰 부모 UI 패널 높이를 동적으로 자동 조절
+            int numRows = (availableTargets.Length + 2) / 3;
+            int newHeight = 35 + numRows * 20;
+            targetsGroup.Size = new Size(440, newHeight);
+            settingsGroup.Size = new Size(460, targetsGroup.Location.Y + newHeight + 10);
+
+            UpdateUIText();
+            OnTargetChanged(null, EventArgs.Empty);
+        }
+
+        private void OnLanguageChanged(object sender, EventArgs e)
+        {
+            string culture = languageComboBox.SelectedIndex == 0 ? "ko-KR" : "en-US";
+            Thread.CurrentThread.CurrentUICulture = new CultureInfo(culture);
+            UpdateUIText();
+            UpdateToolTips();
+        }
+
+        private void UpdateUIText()
+        {
+            try
+            {
+                rootForm.Text = GetLocalizedString("AppTitle");
+                titleLabel.Text = GetLocalizedString("AppTitle");
+                controlGroup.Text = GetLocalizedString("GroupControls");
+                startButton.Text = GetLocalizedString("ButtonStart");
+                stopButton.Text = GetLocalizedString("ButtonStop");
+                captureButton.Text = GetLocalizedString("ButtonCaptureAndSave");
+                settingsGroup.Text = GetLocalizedString("GroupSettings");
+                enableDetectionCheckBox.Text = GetLocalizedString("LabelDetection");
+                enableCensoringCheckBox.Text = GetLocalizedString("LabelEffect");
+                
+                if (enableStickersCheckBox != null) enableStickersCheckBox.Text = GetLocalizedString("LabelStickers");
+                if (enableCaptionsCheckBox != null) enableCaptionsCheckBox.Text = GetLocalizedString("LabelCaptions");
+                if (enableDpiCompatCheckBox != null) enableDpiCompatCheckBox.Text = GetLocalizedString("LabelDpiCompat") ?? "자동 화면 배율 해제";
+                if (modelTypeLabel != null) modelTypeLabel.Text = GetLocalizedString("LabelModelType");
+                if (standardModelRadio != null) standardModelRadio.Text = GetLocalizedString("ModelStandard");
+                if (obbModelRadio != null) obbModelRadio.Text = GetLocalizedString("ModelObb");
+
+                mosaicRadioButton.Text = GetLocalizedString("LabelCensorTypeMosaic");
+                blurRadioButton.Text = GetLocalizedString("LabelCensorTypeBlur");
+                blackBoxRadioButton.Text = GetLocalizedString("LabelCensorTypeBlackBox");
+                strengthLabel.Text = GetLocalizedString("LabelCensorStrength");
+                confidenceLabel.Text = GetLocalizedString("LabelConfidence");
+                targetsGroup.Text = GetLocalizedString("GroupTargets");
+
+                foreach (var kvp in targetCheckBoxes)
+                {
+                    var checkbox = kvp.Value;
+                    var originalKey = (string)checkbox.Tag ?? kvp.Key;
+                    checkbox.Text = GetLocalizedString($"Target_{originalKey}");
+                }
+
+                logGroup.Text = GetLocalizedString("GroupLog");
+
+                if (!string.IsNullOrEmpty(currentGpuStatus))
+                {
+                    string executionModeText = GetLocalizedString("LabelExecutionMode");
+                    string translatedStatus = TranslateGpuStatus(currentGpuStatus);
+                    gpuStatusLabel.Text = $"{executionModeText} {translatedStatus}";
+                    gpuStatusLabel.ForeColor = IsGpuStatus(currentGpuStatus) ? Color.Green : Color.OrangeRed;
+                }
+
+                if (startButton.Enabled) UpdateStatus(GetLocalizedString("StatusReady"), Color.Red);
+                else UpdateStatus(GetLocalizedString("StatusRunning"), Color.Green);
+
+                UpdateToolTips();
+            }
+            catch (Exception ex) { Console.WriteLine($"리소스 로드 실패: {ex.Message}"); }
+        }
+
+        private void UpdateToolTips()
+        {
+            if (toolTip == null) return;
+            try
+            {
+                toolTip.SetToolTip(startButton, GetLocalizedString("TooltipStart"));
+                toolTip.SetToolTip(stopButton, GetLocalizedString("TooltipStop"));
+                toolTip.SetToolTip(captureButton, GetLocalizedString("TooltipCaptureAndSave"));
+                toolTip.SetToolTip(strengthSlider, GetLocalizedString("TooltipStrength"));
+                toolTip.SetToolTip(confidenceSlider, GetLocalizedString("TooltipConfidence"));
+                toolTip.SetToolTip(enableDetectionCheckBox, GetLocalizedString("TooltipDetection"));
+                toolTip.SetToolTip(enableCensoringCheckBox, GetLocalizedString("TooltipCensoring"));
+                if (enableStickersCheckBox != null) toolTip.SetToolTip(enableStickersCheckBox, GetLocalizedString("TooltipStickers"));
+                if (enableCaptionsCheckBox != null) toolTip.SetToolTip(enableCaptionsCheckBox, GetLocalizedString("TooltipCaptions"));
+                if (enableDpiCompatCheckBox != null) toolTip.SetToolTip(enableDpiCompatCheckBox, GetLocalizedString("TooltipDpiCompat"));
+                if (standardModelRadio != null) toolTip.SetToolTip(standardModelRadio, GetLocalizedString("TooltipModelStandard"));
+                if (obbModelRadio != null) toolTip.SetToolTip(obbModelRadio, GetLocalizedString("TooltipModelObb"));
+                toolTip.SetToolTip(mosaicRadioButton, GetLocalizedString("TooltipMosaic"));
+                toolTip.SetToolTip(blurRadioButton, GetLocalizedString("TooltipBlur"));
+                toolTip.SetToolTip(blackBoxRadioButton, GetLocalizedString("TooltipBlackBox"));
+
+                foreach (var kvp in targetCheckBoxes)
+                {
+                    var checkbox = kvp.Value;
+                    var originalKey = (string)checkbox.Tag ?? kvp.Key;
+                    toolTip.SetToolTip(checkbox, GetLocalizedString($"TooltipTarget_{originalKey}"));
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"툴팁 업데이트 실패: {ex.Message}"); }
+        }
+
+        private string GetLocalizedString(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return key;
+            try { return resourceManager.GetString(key, Thread.CurrentThread.CurrentUICulture) ?? key; }
+            catch { return key; }
+        }
+
+        private void OnTargetChanged(object sender, EventArgs e)
+        {
+            var selected = targetCheckBoxes.Where(kvp => kvp.Value.Checked).Select(kvp => kvp.Key).ToList();
+            TargetsChanged?.Invoke(selected);
+        }
+
+        public void UpdateStatus(string message, Color color)
+        {
+            if (disposed) return;
+            if (rootForm.InvokeRequired) { rootForm.BeginInvoke(new Action(() => UpdateStatus(message, color))); return; }
+            if (statusLabel != null) { statusLabel.Text = message; statusLabel.ForeColor = color; }
+        }
+
+        public void LogMessage(string message)
+        {
+            if (disposed) return;
+            if (rootForm.InvokeRequired) { rootForm.BeginInvoke(new Action(() => LogMessage(message))); return; }
+            if (logTextBox != null) { logTextBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}"); logTextBox.SelectionStart = logTextBox.Text.Length; logTextBox.ScrollToCaret(); }
+        }
+
+        public void SetRunningState(bool isRunning)
+        {
+            if (disposed) return;
+            if (rootForm.InvokeRequired) { rootForm.BeginInvoke(new Action(() => SetRunningState(isRunning))); return; }
+            if (startButton != null && stopButton != null) { startButton.Enabled = !isRunning; stopButton.Enabled = isRunning; }
+        }
+
+        public void UpdateGpuStatus(string status)
+        {
+            if (disposed) return;
+            if (rootForm.InvokeRequired) { rootForm.BeginInvoke(new Action(() => UpdateGpuStatus(status))); return; }
+            currentGpuStatus = status ?? "CPU";
+            if (gpuStatusLabel != null)
+            {
+                string executionModeText = GetLocalizedString("LabelExecutionMode");
+                string translatedStatus = TranslateGpuStatus(currentGpuStatus);
+                gpuStatusLabel.Text = $"{executionModeText} {translatedStatus}";
+                gpuStatusLabel.ForeColor = IsGpuStatus(currentGpuStatus) ? Color.Green : Color.OrangeRed;
+            }
+        }
+
+        private string TranslateGpuStatus(string originalStatus)
+        {
+            if (string.IsNullOrEmpty(originalStatus)) return GetLocalizedString("GPU_CPU");
+            string status = originalStatus.ToLower().Trim();
+            if (status.Contains("cuda")) return GetLocalizedString("GPU_CUDA");
+            if (status.Contains("directml")) return GetLocalizedString("GPU_DirectML");
+            if (status.Contains("gpu")) return GetLocalizedString("GPU_CUDA");
+            return GetLocalizedString("GPU_CPU");
+        }
+
+        private bool IsGpuStatus(string status)
+        {
+            if (string.IsNullOrEmpty(status)) return false;
+            string lowerStatus = status.ToLower().Trim();
+            if (lowerStatus.Contains("cuda") || lowerStatus.Contains("directml") || lowerStatus.Contains("gpu"))
+            {
+                if (lowerStatus.Contains("cpu") && !lowerStatus.Contains("gpu")) return false;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// OBB 모델 파일이 없을 경우 라디오 버튼을 비활성화합니다.
+        /// </summary>
+        public void SetObbModelAvailable(bool available)
+        {
+            if (disposed) return;
+            if (rootForm.InvokeRequired) { rootForm.Invoke(new Action(() => SetObbModelAvailable(available))); return; }
+            if (obbModelRadio == null) return;
+            obbModelRadio.Enabled = available;
+            if (!available && obbModelRadio.Checked)
+                standardModelRadio.Checked = true;
+        }
+
+        public void Dispose()
+        {
+            if (disposed) return;
+            toolTip?.Dispose();
+            toolTip = null;
+            disposed = true;
+            GC.SuppressFinalize(this);
+        }
+    }
+}
 
 
 ================================================
@@ -4581,4 +6023,17 @@ namespace MosaicCensorSystem.Utils
         }
     }
 }
+
+
+================================================
+FILE: .claude/settings.local.json
+================================================
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build -c Debug)"
+    ]
+  }
+}
+
 

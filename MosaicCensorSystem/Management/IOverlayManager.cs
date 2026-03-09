@@ -32,14 +32,13 @@ namespace MosaicCensorSystem.Management
     }
 
     /// <summary>
-    /// 실시간 설정을 전달하기 위한 데이터 구조
-    /// ★ EnableCaptions 추가
+    /// 실시간 설정을 전달하기 위한 데이터 구조.
+    /// TargetFPS 제거: 오포르투니스틱 추론으로 FPS는 하드웨어가 자동 결정합니다.
     /// </summary>
     public record CensorSettings(
-        bool EnableDetection, 
-        bool EnableCensoring, 
-        bool EnableStickers, 
-        bool EnableCaptions,  // ★ 캡션 활성화 플래그 추가
-        int TargetFPS
+        bool EnableDetection,
+        bool EnableCensoring,
+        bool EnableStickers,
+        bool EnableCaptions
     );
 }

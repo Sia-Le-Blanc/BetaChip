@@ -4,7 +4,7 @@ using MosaicCensorSystem.Detection;
 using MosaicCensorSystem.Management;
 using MosaicCensorSystem.Overlay;
 using MosaicCensorSystem.UI;
-using MosaicCensorSystem.Models; // 추가됨
+using MosaicCensorSystem.Models;
 using OpenCvSharp;
 using System;
 using System.Collections.Generic;
@@ -12,6 +12,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -34,8 +35,13 @@ namespace MosaicCensorSystem
         private readonly SubscriptionInfo _subInfo; // 유저 등급 정보 저장
 
         public MosaicProcessor Processor => processor;
-        
-        private CensorSettings currentSettings = new(true, true, false, true, 15);
+
+        // 스레드별 독립 추론 컨텍스트 풀
+        // InferenceThread(단일/다중 모니터)와 CaptureAndSave(UI 스레드) 각각에게
+        // 전용 버퍼를 할당하여 inputBuffer·Mat 충돌을 완전히 제거합니다.
+        private readonly ThreadLocal<InferenceContext> _perThreadCtx;
+
+        private CensorSettings currentSettings = new(true, true, false, true);
 
         private readonly List<Mat> squareStickers = new();
         private readonly List<Mat> wideStickers = new();
@@ -51,15 +57,22 @@ namespace MosaicCensorSystem
         public CensorService(GuiController uiController, SubscriptionInfo subInfo)
         {
             ui = uiController;
-            _subInfo = subInfo; // 등급 정보 주입받음
+            _subInfo = subInfo;
             capturer = new ScreenCapture();
             processor = new MosaicProcessor(Program.STANDARD_MODEL_PATH);
             processor.LogCallback = ui.LogMessage;
 
+            // 스레드별 컨텍스트 풀: 각 InferenceThread와 UI 스레드가 호출하는 첫 순간에 생성됨
+            // trackAllValues: true → Dispose() 시 모든 컨텍스트를 순회하여 해제 가능
+            _perThreadCtx = new ThreadLocal<InferenceContext>(
+                () => processor.CreateContext(), trackAllValues: true);
+
             // 등급에 따라 매니저 결정 (Patreon 이상이면 멀티모니터)
             if (_subInfo.Tier == "plus" || _subInfo.Tier == "patreon")
             {
-                overlayManager = new MultiMonitorManager(capturer);
+                // GPU 여부를 전달하여 병렬/직렬 추론 모드를 결정
+                bool isGpuActive = !processor.CurrentExecutionProvider.Contains("CPU", StringComparison.OrdinalIgnoreCase);
+                overlayManager = new MultiMonitorManager(isGpuActive);
                 ui.LogMessage($"🖥️ [{_subInfo.Tier.ToUpper()}] 등급 확인: 멀티 모니터 관리자 활성화!");
             }
             else
@@ -136,7 +149,9 @@ namespace MosaicCensorSystem
                     return processedFrame;
                 }
 
-                List<Detection.Detection> detections = processor.DetectObjects(rawFrame);
+                // 호출 스레드(InferenceThread 또는 UI 스레드)별 전용 컨텍스트를 사용하여
+                // inputBuffer·Mat 충돌 없이 InferenceSession.Run()을 병렬 호출합니다.
+                List<Detection.Detection> detections = processor.DetectObjects(rawFrame, _perThreadCtx.Value);
                 bool detectionActive = detections != null && detections.Count > 0;
                 
                 // 캡션 기능 등급 체크
@@ -257,10 +272,7 @@ namespace MosaicCensorSystem
             bool settingsChanged = false;
             switch (key)
             {
-                case nameof(CensorSettings.TargetFPS): 
-                    currentSettings = currentSettings with { TargetFPS = (int)value }; 
-                    settingsChanged = true; 
-                    break;
+                // TargetFPS 케이스 제거: FPS는 하드웨어가 자동으로 결정
                 case nameof(CensorSettings.EnableDetection): 
                     currentSettings = currentSettings with { EnableDetection = (bool)value }; 
                     settingsChanged = true; 
@@ -299,6 +311,13 @@ namespace MosaicCensorSystem
         
         private void BlendStickerOnMosaic(Mat frame, Detection.Detection detection, Mat sticker)
         {
+            // OBB 모드이고 유효한 각도가 있으면 회전 렌더링 경로로 분기
+            if (processor.isObbMode && detection.ObbWidth > 0 && detection.ObbHeight > 0)
+            {
+                BlendRotatedStickerObb(frame, detection, sticker);
+                return;
+            }
+
             try
             {
                 int x = Math.Max(0, detection.BBox[0]);
@@ -332,6 +351,71 @@ namespace MosaicCensorSystem
             catch { }
         }
         
+        // OBB 전용: 스티커를 detection 각도(Degree)로 회전하여 OBB 중심에 합성
+        private void BlendRotatedStickerObb(Mat frame, Detection.Detection detection, Mat sticker)
+        {
+            try
+            {
+                int ow = Math.Max(1, (int)detection.ObbWidth);
+                int oh = Math.Max(1, (int)detection.ObbHeight);
+
+                // 스티커를 OBB 고유 크기로 리사이즈
+                using var resized = new Mat();
+                Cv2.Resize(sticker, resized, new OpenCvSharp.Size(ow, oh), interpolation: InterpolationFlags.Area);
+
+                // 스티커 중심 기준 회전 행렬 (Detection.Angle은 이미 Degree 단위)
+                var stickerCenter = new Point2f(ow / 2f, oh / 2f);
+                using var rotMat = Cv2.GetRotationMatrix2D(stickerCenter, detection.Angle, 1.0);
+
+                // 회전 후 바운딩 박스 크기 계산
+                var rotRect = new RotatedRect(stickerCenter, new Size2f(ow, oh), (float)detection.Angle);
+                var bb = rotRect.BoundingRect();
+                int dstW = Math.Max(1, bb.Width);
+                int dstH = Math.Max(1, bb.Height);
+
+                // 회전 후 이미지 중심이 (dstW/2, dstH/2)에 오도록 평행이동 보정
+                rotMat.At<double>(0, 2) += (dstW - ow) / 2.0;
+                rotMat.At<double>(1, 2) += (dstH - oh) / 2.0;
+
+                using var rotated = new Mat();
+                Cv2.WarpAffine(resized, rotated, rotMat, new OpenCvSharp.Size(dstW, dstH),
+                    flags: InterpolationFlags.Linear, borderMode: BorderTypes.Constant, borderValue: new Scalar(0));
+
+                // OBB 중심 좌표를 기준으로 프레임 상의 붙여넣기 위치 계산
+                int pasteX = (int)(detection.CenterX - dstW / 2f);
+                int pasteY = (int)(detection.CenterY - dstH / 2f);
+
+                // 프레임 경계를 벗어나는 영역 클리핑
+                int srcX = Math.Max(0, -pasteX);
+                int srcY = Math.Max(0, -pasteY);
+                int dstX = Math.Max(0, pasteX);
+                int dstY = Math.Max(0, pasteY);
+                int copyW = Math.Min(dstW - srcX, frame.Width - dstX);
+                int copyH = Math.Min(dstH - srcY, frame.Height - dstY);
+                if (copyW <= 0 || copyH <= 0) return;
+
+                using var srcRoi = new Mat(rotated, new Rect(srcX, srcY, copyW, copyH));
+                using var dstRoi = new Mat(frame, new Rect(dstX, dstY, copyW, copyH));
+
+                if (srcRoi.Channels() == 4)
+                {
+                    Mat[] ch = Cv2.Split(srcRoi);
+                    try
+                    {
+                        using var bgr = new Mat();
+                        Cv2.Merge(new[] { ch[0], ch[1], ch[2] }, bgr);
+                        bgr.CopyTo(dstRoi, ch[3]); // alpha 채널을 마스크로 사용
+                    }
+                    finally { foreach (var c in ch) c?.Dispose(); }
+                }
+                else
+                {
+                    srcRoi.CopyTo(dstRoi);
+                }
+            }
+            catch { }
+        }
+
         private void LoadStickers()
         {
             string stickerPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Stickers");
@@ -356,6 +440,15 @@ namespace MosaicCensorSystem
         {
             if (disposed) return;
             Stop();
+
+            // 모든 스레드의 InferenceContext 해제 (trackAllValues: true로 생성했으므로 순회 가능)
+            if (_perThreadCtx != null)
+            {
+                foreach (var ctx in _perThreadCtx.Values)
+                    try { ctx?.Dispose(); } catch { }
+                _perThreadCtx.Dispose();
+            }
+
             capturer?.Dispose();
             processor?.Dispose();
             overlayManager?.Dispose();

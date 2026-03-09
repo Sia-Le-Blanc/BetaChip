@@ -1,99 +1,94 @@
 // MultiMonitorManager.cs
-using MosaicCensorSystem.Capture;
+#nullable disable
 using MosaicCensorSystem.UI;
 using OpenCvSharp;
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
-using MosaicCensorSystem.Overlay;
 
 namespace MosaicCensorSystem.Management
 {
+    /// <summary>
+    /// 감지된 각 Screen마다 독립적인 SingleMonitorManager 인스턴스를 생성하여
+    /// 완전 병렬로 구동하는 다중 모니터 관리자입니다.
+    ///
+    /// ▸ 각 모니터: 독립 CaptureLoop / InferenceLoop / OverlayWindow / RenderTimer
+    /// ▸ 종횡비 왜곡 원천 차단: 각 모니터가 자신의 bounds로만 캡처
+    /// ▸ 자원 적응형 추론 게이트:
+    ///    - GPU 활성: 모든 모니터 InferenceLoop가 동시에 model.Run() 호출 (병렬)
+    ///    - CPU 전용: SemaphoreSlim(1,1)로 직렬화 → CPU 과부하 방지
+    /// ▸ 성능 로그: [모니터 1] FPS:N | 캡처:Xms | 추론:Yms | 렌더:Zms (모니터별 독립)
+    /// </summary>
     public class MultiMonitorManager : IOverlayManager
     {
-        private class MonitorTask
+        private GuiController _ui;
+        private readonly List<SingleMonitorManager> _monitors = new();
+        private volatile bool _isRunning = false;
+        private CensorSettings _settings = new(true, true, false, false);
+        private readonly object _disposeLock = new object();
+        private bool _isDisposed = false;
+
+        // ── 자원 적응형 추론 게이트 ──────────────────────────────────────────
+        // processFrame(= DetectObjects + ApplyCensor)을 래핑하여 CPU/GPU에 따라 직렬/병렬 제어
+        // GPU: SemaphoreSlim(N, N) → 모든 모니터 동시 통과 (병렬 추론)
+        // CPU: SemaphoreSlim(1, 1) → 한 번에 하나만 통과 (직렬 추론, CPU 과부하 방지)
+        private readonly SemaphoreSlim _inferenceGate;
+        private readonly bool _isGpuActive;
+
+        /// <param name="isGpuActive">
+        /// true(CUDA/DirectML): 병렬 추론. false(CPU): 직렬 추론.
+        /// </param>
+        public MultiMonitorManager(bool isGpuActive = false)
         {
-            public ScreenCapture Capturer { get; }
-            public FullscreenOverlay Overlay { get; }
-            public Thread ProcessThread { get; set; }
-            public bool IsEnabled { get; set; } = true;
-            private volatile bool isDisposed = false;
+            _isGpuActive = isGpuActive;
 
-            public MonitorTask(Rectangle bounds)
-            {
-                Capturer = new ScreenCapture(bounds);
-                Overlay = new FullscreenOverlay(bounds);
-            }
+            var screens = Screen.AllScreens;
+            for (int i = 0; i < screens.Length; i++)
+                _monitors.Add(new SingleMonitorManager(screens[i].Bounds, i));
 
-            public bool IsValid()
-            {
-                return !isDisposed && Capturer != null && Overlay != null;
-            }
-
-            public void Dispose()
-            {
-                if (isDisposed) return;
-                isDisposed = true;
-                
-                try { Capturer?.Dispose(); } catch { }
-                try { Overlay?.Dispose(); } catch { }
-            }
-        }
-        
-        private GuiController ui;
-        private readonly List<MonitorTask> monitorTasks = new List<MonitorTask>();
-        private volatile bool isRunning = false;
-        private CensorSettings settings = new(true, true, false, true, 15);
-        private Func<Mat, Mat> processFrame;
-        private readonly object disposeLock = new object();
-        private bool isDisposed = false;
-
-        public IReadOnlyList<Screen> Monitors { get; }
-
-        public MultiMonitorManager(ScreenCapture mainCapturerToDetectMonitors)
-        {
-            Monitors = Screen.AllScreens.ToList().AsReadOnly();
-            foreach (var screen in Monitors)
-            {
-                monitorTasks.Add(new MonitorTask(screen.Bounds));
-            }
+            int parallelism = isGpuActive ? Math.Max(1, screens.Length) : 1;
+            _inferenceGate = new SemaphoreSlim(parallelism, parallelism);
         }
 
         public void Initialize(GuiController uiController)
         {
-            ui = uiController;
-            ui.LogMessage($"감지된 모니터 수: {Monitors.Count}");
-            for (int i = 0; i < Monitors.Count; i++)
+            _ui = uiController;
+            string mode = _isGpuActive ? "GPU 병렬 모드" : "CPU 직렬 모드";
+            _ui.LogMessage($"🖥️ 감지된 모니터: {_monitors.Count}개 | 추론: {mode}");
+
+            var screens = Screen.AllScreens;
+            for (int i = 0; i < _monitors.Count && i < screens.Length; i++)
             {
-                ui.LogMessage($"   모니터 {i + 1}: {Monitors[i].Bounds.Width}x{Monitors[i].Bounds.Height} at {Monitors[i].Bounds.Location}");
+                var b = screens[i].Bounds;
+                _ui.LogMessage($"   모니터 {i + 1}: {b.Width}×{b.Height} @ ({b.X},{b.Y})");
             }
+
+            foreach (var m in _monitors)
+                m.Initialize(uiController);
         }
 
         public void Start(Func<Mat, Mat> frameProcessor)
         {
-            lock (disposeLock)
+            lock (_disposeLock)
             {
-                if (isRunning || isDisposed) return;
-                isRunning = true;
-                processFrame = frameProcessor;
-                
-                foreach (var task in monitorTasks.Where(t => t.IsEnabled))
+                if (_isRunning || _isDisposed) return;
+                _isRunning = true;
+
+                // 추론 게이트로 래핑: CPU 직렬 / GPU 병렬
+                Func<Mat, Mat> gated = (frame) =>
                 {
-                    if (!task.IsValid()) continue;
-                    
-                    try
-                    {
-                        task.Overlay.Show();
-                        task.ProcessThread = new Thread(() => ProcessingLoop(task)) 
-                            { IsBackground = true, Name = $"Monitor_{monitorTasks.IndexOf(task)}_Thread" };
-                        task.ProcessThread.Start();
-                    }
+                    _inferenceGate.Wait();
+                    try   { return frameProcessor(frame); }
+                    finally { _inferenceGate.Release(); }
+                };
+
+                foreach (var m in _monitors)
+                {
+                    try { m.Start(gated); }
                     catch (Exception ex)
                     {
-                        ui?.LogMessage($"🚨 모니터 {monitorTasks.IndexOf(task)} 시작 실패: {ex.Message}");
+                        _ui?.LogMessage($"🚨 [모니터 {m.MonitorIndex + 1}] 시작 실패: {ex.Message}");
                     }
                 }
             }
@@ -101,120 +96,33 @@ namespace MosaicCensorSystem.Management
 
         public void Stop()
         {
-            lock (disposeLock)
+            lock (_disposeLock)
             {
-                if (!isRunning) return;
-                isRunning = false;
-                
-                foreach (var task in monitorTasks)
-                {
-                    if (task.ProcessThread != null && task.ProcessThread.IsAlive)
-                    {
-                        task.ProcessThread.Join(1000);
-                    }
-                    
-                    if (task.IsValid())
-                    {
-                        try { task.Overlay.Hide(); } catch { }
-                    }
-                }
+                if (!_isRunning) return;
+                _isRunning = false;
+                foreach (var m in _monitors) { try { m.Stop(); } catch { } }
             }
-        }
-        
-        public void SetMonitorEnabled(int index, bool enabled)
-        {
-            if (index < 0 || index >= monitorTasks.Count) return;
-            monitorTasks[index].IsEnabled = enabled;
-            ui?.LogMessage($"모니터 {index + 1} {(enabled ? "활성화" : "비활성화")}");
         }
 
         public void UpdateSettings(CensorSettings newSettings)
         {
-            settings = newSettings;
-        }
-
-        private void ProcessingLoop(MonitorTask task)
-        {
-            if (task == null) return;
-
-            while (isRunning && task.IsEnabled && !isDisposed)
-            {
-                try
-                {
-                    if (!task.IsValid())
-                    {
-                        ui?.LogMessage("⚠️ 모니터 작업이 유효하지 않음 - 루프 종료");
-                        break;
-                    }
-
-                    var frameStart = DateTime.Now;
-
-                    Mat? rawFrame = null;
-                    Mat? processedFrame = null;
-
-                    try
-                    {
-                        rawFrame = task.Capturer?.GetFrame();
-                        
-                        if (rawFrame != null && !rawFrame.IsDisposed && !rawFrame.Empty())
-                        {
-                            if (processFrame != null)
-                            {
-                                processedFrame = processFrame(rawFrame);
-
-                                if (processedFrame != null && !processedFrame.IsDisposed && task.IsValid())
-                                {
-                                    task.Overlay?.UpdateFrame(processedFrame);
-                                }
-                            }
-                        }
-                    }
-                    finally
-                    {
-                        rawFrame?.Dispose();
-                        processedFrame?.Dispose();
-                    }
-
-                    if (!isRunning || isDisposed) break;
-
-                    var elapsedMs = (DateTime.Now - frameStart).TotalMilliseconds;
-                    int targetFps = Math.Max(1, settings?.TargetFPS ?? 15);
-                    int delay = (1000 / targetFps) - (int)elapsedMs;
-                    if (delay > 0) Thread.Sleep(delay);
-                }
-                catch (ObjectDisposedException)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    ui?.LogMessage($"🚨 모니터 처리 루프 오류: {ex.Message}");
-                    if (!isRunning || isDisposed) break;
-                    Thread.Sleep(100);
-                }
-            }
-
-            if (task.IsValid())
-            {
-                try { task.Overlay?.Hide(); } catch { }
-            }
+            _settings = newSettings;
+            foreach (var m in _monitors) m.UpdateSettings(newSettings);
         }
 
         public void Dispose()
         {
-            lock (disposeLock)
+            lock (_disposeLock)
             {
-                if (isDisposed) return;
-                isDisposed = true;
-                
+                if (_isDisposed) return;
+                _isDisposed = true;
+
                 Stop();
 
-                foreach (var task in monitorTasks)
-                {
-                    task?.Dispose();
-                }
-                
-                monitorTasks.Clear();
+                foreach (var m in _monitors) { try { m.Dispose(); } catch { } }
+                _monitors.Clear();
+
+                _inferenceGate?.Dispose();
             }
         }
     }

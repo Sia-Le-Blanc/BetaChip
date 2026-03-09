@@ -15,7 +15,8 @@ namespace MosaicCensorSystem.UI
     public class GuiController : IDisposable
     {
         // --- Events ---
-        public event Action<int> FpsChanged;
+        // FpsChanged 이벤트는 오포르투니스틱 추론 도입으로 제거됨
+        // (하드웨어 최대 성능 자동 사용, 수동 FPS 조절 불필요)
         public event Action<bool> DetectionToggled;
         public event Action<bool> CensoringToggled;
         public event Action<bool> StickerToggled;
@@ -39,10 +40,10 @@ namespace MosaicCensorSystem.UI
         private Button startButton, stopButton, captureButton, gpuSetupButton;
         private GroupBox controlGroup, settingsGroup, logGroup, targetsGroup;
         private Label gpuStatusLabel;
-        private Label fpsLabel, strengthLabel, confidenceLabel;
+        private Label strengthLabel, confidenceLabel;
         private CheckBox enableDetectionCheckBox, enableCensoringCheckBox;
         private RadioButton mosaicRadioButton, blurRadioButton, blackBoxRadioButton;
-        private TrackBar fpsSlider, strengthSlider, confidenceSlider;
+        private TrackBar strengthSlider, confidenceSlider;
         private readonly Dictionary<string, CheckBox> targetCheckBoxes = new Dictionary<string, CheckBox>();
         private ToolTip toolTip;
 
@@ -208,9 +209,18 @@ namespace MosaicCensorSystem.UI
             int y = 25;
 
             // AI 모델 선택 (최상단)
+            // ★ Panel로 격리: settingsGroup 직속 자식이 되지 않아야 모자이크 종류 그룹과 분리됨
             modelTypeLabel = new Label { Location = new Point(10, y), AutoSize = true };
-            standardModelRadio = new RadioButton { Checked = true, Location = new Point(10, y + 20), AutoSize = true };
-            obbModelRadio = new RadioButton { Location = new Point(230, y + 20), AutoSize = true };
+
+            var modelTypePanel = new Panel
+            {
+                Location  = new Point(10, y + 20),
+                Size      = new Size(440, 24),
+                BackColor = Color.Transparent,
+            };
+            // 패널 내부 좌표로 위치 재설정 (settingsGroup 기준 x=10 → 패널 기준 x=0/220)
+            standardModelRadio = new RadioButton { Checked = true, Location = new Point(0,   2), AutoSize = true };
+            obbModelRadio      = new RadioButton {               Location = new Point(220, 2), AutoSize = true };
 
             EventHandler modelTypeHandler = (s, e) =>
             {
@@ -218,30 +228,14 @@ namespace MosaicCensorSystem.UI
                     ModelTypeChanged?.Invoke(obbModelRadio.Checked);
             };
             standardModelRadio.CheckedChanged += modelTypeHandler;
-            obbModelRadio.CheckedChanged += modelTypeHandler;
+            obbModelRadio.CheckedChanged      += modelTypeHandler;
 
-            settingsGroup.Controls.AddRange(new Control[] { modelTypeLabel, standardModelRadio, obbModelRadio });
+            modelTypePanel.Controls.AddRange(new Control[] { standardModelRadio, obbModelRadio });
+            settingsGroup.Controls.Add(modelTypeLabel);
+            settingsGroup.Controls.Add(modelTypePanel);
             y += 50;
 
-            var fpsValueLabel = new Label { Text = "15", Location = new Point(390, y), AutoSize = true };
-            fpsSlider = new TrackBar
-            {
-                Minimum = 5,
-                Maximum = 240,
-                Value = 15,
-                TickFrequency = 5,
-                Location = new Point(100, y - 5),
-                Size = new Size(280, 45)
-            };
-            fpsSlider.ValueChanged += (s, e) =>
-            {
-                fpsValueLabel.Text = fpsSlider.Value.ToString();
-                FpsChanged?.Invoke(fpsSlider.Value);
-            };
-            fpsLabel = new Label { Location = new Point(10, y), AutoSize = true };
-            settingsGroup.Controls.AddRange(new Control[] { fpsLabel, fpsSlider, fpsValueLabel });
-            y += 40;
-
+            // FPS 슬라이더 제거: 오포르투니스틱 추론으로 FPS는 하드웨어가 자동 결정
             enableDetectionCheckBox = new CheckBox { Checked = true, Location = new Point(10, y), AutoSize = true };
             enableDetectionCheckBox.CheckedChanged += (s, e) => DetectionToggled?.Invoke(enableDetectionCheckBox.Checked);
 
@@ -272,24 +266,33 @@ namespace MosaicCensorSystem.UI
             settingsGroup.Controls.Add(enableDpiCompatCheckBox);
             y += 30;
 
-            mosaicRadioButton = new RadioButton { Checked = true, Location = new Point(10, y), AutoSize = true };
-            blurRadioButton = new RadioButton { Location = new Point(100, y), AutoSize = true };
-            blackBoxRadioButton = new RadioButton { Location = new Point(200, y), AutoSize = true };
+            // ★ Panel로 격리: 모델 선택 그룹과 별도의 부모를 가져야 서로 간섭하지 않음
+            var censorTypePanel = new Panel
+            {
+                Location  = new Point(10, y),
+                Size      = new Size(440, 24),
+                BackColor = Color.Transparent,
+            };
+            // 패널 내부 좌표로 위치 재설정 (settingsGroup 기준 x=10/100/200 → 패널 기준 x=0/90/190)
+            mosaicRadioButton   = new RadioButton { Checked = true, Location = new Point(0,   2), AutoSize = true };
+            blurRadioButton     = new RadioButton {               Location = new Point(90,  2), AutoSize = true };
+            blackBoxRadioButton = new RadioButton {               Location = new Point(190, 2), AutoSize = true };
 
             EventHandler censorTypeHandler = (s, e) =>
             {
                 if (s is RadioButton rb && rb.Checked)
                 {
-                    if (mosaicRadioButton.Checked) CensorTypeChanged?.Invoke(CensorType.Mosaic);
+                    if (mosaicRadioButton.Checked)   CensorTypeChanged?.Invoke(CensorType.Mosaic);
                     else if (blurRadioButton.Checked) CensorTypeChanged?.Invoke(CensorType.Blur);
                     else if (blackBoxRadioButton.Checked) CensorTypeChanged?.Invoke(CensorType.BlackBox);
                 }
             };
-            mosaicRadioButton.CheckedChanged += censorTypeHandler;
-            blurRadioButton.CheckedChanged += censorTypeHandler;
+            mosaicRadioButton.CheckedChanged   += censorTypeHandler;
+            blurRadioButton.CheckedChanged     += censorTypeHandler;
             blackBoxRadioButton.CheckedChanged += censorTypeHandler;
 
-            settingsGroup.Controls.AddRange(new Control[] { mosaicRadioButton, blurRadioButton, blackBoxRadioButton });
+            censorTypePanel.Controls.AddRange(new Control[] { mosaicRadioButton, blurRadioButton, blackBoxRadioButton });
+            settingsGroup.Controls.Add(censorTypePanel);
             y += 30;
 
             var strengthValueLabel = new Label { Text = "20", Location = new Point(390, y), AutoSize = true };
@@ -392,7 +395,6 @@ namespace MosaicCensorSystem.UI
                 stopButton.Text = GetLocalizedString("ButtonStop");
                 captureButton.Text = GetLocalizedString("ButtonCaptureAndSave");
                 settingsGroup.Text = GetLocalizedString("GroupSettings");
-                fpsLabel.Text = GetLocalizedString("LabelFps");
                 enableDetectionCheckBox.Text = GetLocalizedString("LabelDetection");
                 enableCensoringCheckBox.Text = GetLocalizedString("LabelEffect");
                 
@@ -443,7 +445,6 @@ namespace MosaicCensorSystem.UI
                 toolTip.SetToolTip(startButton, GetLocalizedString("TooltipStart"));
                 toolTip.SetToolTip(stopButton, GetLocalizedString("TooltipStop"));
                 toolTip.SetToolTip(captureButton, GetLocalizedString("TooltipCaptureAndSave"));
-                toolTip.SetToolTip(fpsSlider, GetLocalizedString("TooltipFps"));
                 toolTip.SetToolTip(strengthSlider, GetLocalizedString("TooltipStrength"));
                 toolTip.SetToolTip(confidenceSlider, GetLocalizedString("TooltipConfidence"));
                 toolTip.SetToolTip(enableDetectionCheckBox, GetLocalizedString("TooltipDetection"));
