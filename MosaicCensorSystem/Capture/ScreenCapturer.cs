@@ -45,10 +45,33 @@ namespace MosaicCensorSystem.Capture
         private IntPtr hDesktopWnd;
         private IntPtr hDesktopDC;
         private IntPtr hMemoryDC;
-        private IntPtr hBitmap;
+        private const int BufferCount = 5;
+        private IntPtr[] hBitmaps;
         private IntPtr hOldBitmap;
-        private IntPtr pPixelData;
+        private IntPtr[] pPixelData;
+        private Mat[] bufferMats;
+        private bool[] bufferInUse;
+        private readonly object bufferLock = new object();
         private bool disposed = false;
+
+        public sealed class CapturedFrame : IDisposable
+        {
+            private readonly ScreenCapture owner;
+            private readonly int index;
+            public Mat Frame { get; }
+
+            internal CapturedFrame(ScreenCapture owner, int index, Mat frame)
+            {
+                this.owner = owner;
+                this.index = index;
+                Frame = frame;
+            }
+
+            public void Dispose()
+            {
+                owner?.ReleaseBuffer(index);
+            }
+        }
         
         public ScreenCapture()
         {
@@ -82,18 +105,66 @@ namespace MosaicCensorSystem.Capture
             bmi.bmiHeader.biBitCount = 32;
             bmi.bmiHeader.biCompression = BI_RGB;
 
-            hBitmap = CreateDIBSection(hMemoryDC, ref bmi, 0, out pPixelData, IntPtr.Zero, 0);
-            hOldBitmap = SelectObject(hMemoryDC, hBitmap);
+            hBitmaps = new IntPtr[BufferCount];
+            pPixelData = new IntPtr[BufferCount];
+            bufferMats = new Mat[BufferCount];
+            bufferInUse = new bool[BufferCount];
+
+            for (int i = 0; i < BufferCount; i++)
+            {
+                hBitmaps[i] = CreateDIBSection(hMemoryDC, ref bmi, 0, out pPixelData[i], IntPtr.Zero, 0);
+                bufferMats[i] = new Mat(height, width, MatType.CV_8UC4, pPixelData[i]);
+            }
+
+            hOldBitmap = SelectObject(hMemoryDC, hBitmaps[0]);
         }
 
 
 
+        public CapturedFrame CaptureFrame()
+        {
+            if (disposed) return null;
+
+            int index = AcquireBuffer();
+            if (index < 0) return null;
+
+            SelectObject(hMemoryDC, hBitmaps[index]);
+            BitBlt(hMemoryDC, 0, 0, width, height, hDesktopDC, virtualX, virtualY, SRCCOPY);
+            return new CapturedFrame(this, index, bufferMats[index]);
+        }
+
         public Mat GetFrame()
         {
             if (disposed) return null;
-            
-            BitBlt(hMemoryDC, 0, 0, width, height, hDesktopDC, virtualX, virtualY, SRCCOPY);
-            return new Mat(height, width, MatType.CV_8UC4, pPixelData);
+            using var captured = CaptureFrame();
+            if (captured == null || captured.Frame == null || captured.Frame.Empty()) return null;
+            return captured.Frame.Clone();
+        }
+
+        private int AcquireBuffer()
+        {
+            lock (bufferLock)
+            {
+                for (int i = 0; i < BufferCount; i++)
+                {
+                    if (!bufferInUse[i])
+                    {
+                        bufferInUse[i] = true;
+                        return i;
+                    }
+                }
+            }
+            return -1;
+        }
+
+        private void ReleaseBuffer(int index)
+        {
+            if (index < 0) return;
+            lock (bufferLock)
+            {
+                if (index < bufferInUse.Length)
+                    bufferInUse[index] = false;
+            }
         }
         
         public void Dispose()
@@ -120,11 +191,17 @@ namespace MosaicCensorSystem.Capture
                     hOldBitmap = IntPtr.Zero;
                 }
 
-                // 2. 이제 자유로워진 우리가 만든 비트맵을 삭제합니다.
-                if (hBitmap != IntPtr.Zero)
+                // 2. 우리가 만든 비트맵들을 삭제합니다.
+                if (hBitmaps != null)
                 {
-                    DeleteObject(hBitmap);
-                    hBitmap = IntPtr.Zero;
+                    for (int i = 0; i < hBitmaps.Length; i++)
+                    {
+                        if (hBitmaps[i] != IntPtr.Zero)
+                        {
+                            DeleteObject(hBitmaps[i]);
+                            hBitmaps[i] = IntPtr.Zero;
+                        }
+                    }
                 }
 
                 // 3. 비트맵이 모두 정리된 메모리 DC를 삭제합니다.
@@ -141,6 +218,12 @@ namespace MosaicCensorSystem.Capture
                     hDesktopDC = IntPtr.Zero;
                 }
                 
+                if (bufferMats != null)
+                {
+                    foreach (var m in bufferMats) m?.Dispose();
+                    bufferMats = null;
+                }
+
                 disposed = true;
             }
         }

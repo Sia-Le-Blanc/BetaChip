@@ -43,14 +43,21 @@ namespace MosaicCensorSystem.Detection
     {
         // ── 전처리 전용 버퍼 ────────────────────────────────────────────────────
         internal float[] InputBuffer;          // ONNX 입력 텐서 메모리
+        internal float[] InputBufferRef;
         internal Mat     ResizedMat = new Mat();
         internal Mat     PaddedMat  = new Mat();
-        internal Mat[]   Channels   = null;    // Cv2.Split 결과
+        internal Mat[]   Channels   = null;    // ExtractChannel 결과 (B,G,R)
+
+        // ONNX input tensor/cache (스레드별)
+        internal DenseTensor<float> InputTensor;
+        internal List<NamedOnnxValue> Inputs;
 
         // ── 후처리 전용 버퍼 (GC 재사용) ───────────────────────────────────────
         internal readonly List<Detection> DetectionBuffer = new(256);
         internal readonly List<Detection> NmsBuffer       = new(64);
         internal readonly List<Detection> FinalBuffer     = new(64);
+        internal readonly List<Detection> RemainingBuffer = new(64);
+        internal readonly List<Rect2d> TrackBoxes         = new(64);
 
         // ── 타겟 클래스 인덱스 캐시 (스레드별 독립) ────────────────────────────
         internal int[]  TargetClassIndices = Array.Empty<int>();
@@ -68,6 +75,20 @@ namespace MosaicCensorSystem.Detection
                 InputBuffer = new float[size];
         }
 
+        internal void EnsureInputTensor(int inputSize)
+        {
+            int needed = 3 * inputSize * inputSize;
+            if (InputTensor == null || InputTensor.Buffer.Length != needed || !ReferenceEquals(InputBufferRef, InputBuffer))
+            {
+                InputTensor = new DenseTensor<float>(InputBuffer, new[] { 1, 3, inputSize, inputSize });
+                Inputs = new List<NamedOnnxValue>(1)
+                {
+                    NamedOnnxValue.CreateFromTensor("images", InputTensor)
+                };
+                InputBufferRef = InputBuffer;
+            }
+        }
+
         public void Dispose()
         {
             ResizedMat?.Dispose();
@@ -77,6 +98,8 @@ namespace MosaicCensorSystem.Detection
                 foreach (var c in Channels) c?.Dispose();
                 Channels = null;
             }
+            InputTensor = null;
+            Inputs = null;
         }
     }
 
@@ -112,6 +135,7 @@ namespace MosaicCensorSystem.Detection
         {
             LoadModel(modelPath);
             _instanceCtx.EnsureBufferSize(3 * _inputSize * _inputSize);
+            _instanceCtx.EnsureInputTensor(_inputSize);
         }
 
         // ── 모델 로드 (항상 WriteLock 내 혹은 생성자에서 호출) ──────────────────
@@ -241,6 +265,7 @@ namespace MosaicCensorSystem.Detection
                 LoadModel(modelPath);
                 // 인스턴스 컨텍스트 버퍼 크기 갱신
                 _instanceCtx.EnsureBufferSize(3 * _inputSize * _inputSize);
+                _instanceCtx.EnsureInputTensor(_inputSize);
                 return IsModelLoaded();
             }
             finally { _rwLock.ExitWriteLock(); }
@@ -255,7 +280,11 @@ namespace MosaicCensorSystem.Detection
         {
             var ctx = new InferenceContext();
             _rwLock.EnterReadLock();
-            try { ctx.EnsureBufferSize(3 * _inputSize * _inputSize); }
+            try
+            {
+                ctx.EnsureBufferSize(3 * _inputSize * _inputSize);
+                ctx.EnsureInputTensor(_inputSize);
+            }
             finally { _rwLock.ExitReadLock(); }
             return ctx;
         }
@@ -269,6 +298,7 @@ namespace MosaicCensorSystem.Detection
             {
                 if (_model == null) return new List<Detection>();
                 _instanceCtx.EnsureBufferSize(3 * _inputSize * _inputSize);
+                _instanceCtx.EnsureInputTensor(_inputSize);
                 return DetectObjectsCore(frame, _instanceCtx, _model, _inputSize);
             }
             catch (Exception ex)
@@ -288,6 +318,7 @@ namespace MosaicCensorSystem.Detection
             {
                 if (_model == null) return new List<Detection>();
                 ctx.EnsureBufferSize(3 * _inputSize * _inputSize);
+                ctx.EnsureInputTensor(_inputSize);
                 return DetectObjectsCore(frame, ctx, _model, _inputSize);
             }
             catch (Exception ex)
@@ -302,8 +333,7 @@ namespace MosaicCensorSystem.Detection
         private List<Detection> DetectObjectsCore(Mat frame, InferenceContext ctx, InferenceSession m, int inputSize)
         {
             var (scale, padX, padY) = Preprocess(frame, ctx, inputSize);
-            var inputTensor = new DenseTensor<float>(ctx.InputBuffer, new[] { 1, 3, inputSize, inputSize });
-            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("images", inputTensor) };
+            var inputs = ctx.Inputs;
 
             // ONNX Runtime: Run()은 동일 session에 대해 멀티스레드 동시 호출이 안전함
             using var results = m.Run(inputs);
@@ -311,22 +341,46 @@ namespace MosaicCensorSystem.Detection
             var detections   = Postprocess(outputTensor, scale, padX, padY, frame.Width, frame.Height, ctx, inputSize);
             var nmsDetections = ApplyNMS(detections, ctx);
 
-            var trackBoxes   = nmsDetections.Select(d => new Rect2d(d.BBox[0], d.BBox[1], d.Width, d.Height)).ToList();
-            var trackedResults = ctx.Tracker.Update(trackBoxes);
+            ctx.TrackBoxes.Clear();
+            for (int i = 0; i < nmsDetections.Count; i++)
+            {
+                var d = nmsDetections[i];
+                ctx.TrackBoxes.Add(new Rect2d(d.BBox[0], d.BBox[1], d.Width, d.Height));
+            }
+            var trackedResults = ctx.Tracker.Update(ctx.TrackBoxes);
 
             ctx.FinalBuffer.Clear();
-            var remaining = new List<Detection>(nmsDetections);
+            ctx.RemainingBuffer.Clear();
+            ctx.RemainingBuffer.AddRange(nmsDetections);
+
             foreach (var track in trackedResults)
             {
-                var bestMatch = remaining
-                    .Select(det => new { Detection = det, Distance = new Rect2d(det.BBox[0], det.BBox[1], det.Width, det.Height).DistanceTo(track.box) })
-                    .OrderBy(x => x.Distance)
-                    .FirstOrDefault();
-                if (bestMatch != null && bestMatch.Distance < 50)
+                int bestIndex = -1;
+                double bestDist = double.MaxValue;
+                double trackCx = track.box.X + track.box.Width / 2.0;
+                double trackCy = track.box.Y + track.box.Height / 2.0;
+
+                for (int i = 0; i < ctx.RemainingBuffer.Count; i++)
                 {
-                    bestMatch.Detection.TrackId = track.id;
-                    ctx.FinalBuffer.Add(bestMatch.Detection);
-                    remaining.Remove(bestMatch.Detection);
+                    var det = ctx.RemainingBuffer[i];
+                    double detCx = det.BBox[0] + det.Width / 2.0;
+                    double detCy = det.BBox[1] + det.Height / 2.0;
+                    double dx = detCx - trackCx;
+                    double dy = detCy - trackCy;
+                    double dist = Math.Sqrt(dx * dx + dy * dy);
+                    if (dist < bestDist)
+                    {
+                        bestDist = dist;
+                        bestIndex = i;
+                    }
+                }
+
+                if (bestIndex >= 0 && bestDist < 50)
+                {
+                    var det = ctx.RemainingBuffer[bestIndex];
+                    det.TrackId = track.id;
+                    ctx.FinalBuffer.Add(det);
+                    ctx.RemainingBuffer.RemoveAt(bestIndex);
                 }
             }
             return ctx.FinalBuffer;
@@ -369,23 +423,35 @@ namespace MosaicCensorSystem.Detection
                 padX, targetSize - newWidth  - padX,
                 BorderTypes.Constant, new Scalar(114, 114, 114));
 
-            if (ctx.Channels != null)
-                foreach (var c in ctx.Channels) c?.Dispose();
-            Cv2.Split(ctx.PaddedMat, out ctx.Channels);
+            if (ctx.Channels == null || ctx.Channels.Length != 3 ||
+                ctx.Channels[0] == null || ctx.Channels[0].Width != targetSize || ctx.Channels[0].Height != targetSize)
+            {
+                if (ctx.Channels != null)
+                    foreach (var c in ctx.Channels) c?.Dispose();
+                ctx.Channels = new[]
+                {
+                    new Mat(targetSize, targetSize, MatType.CV_8UC1),
+                    new Mat(targetSize, targetSize, MatType.CV_8UC1),
+                    new Mat(targetSize, targetSize, MatType.CV_8UC1),
+                };
+            }
+            Cv2.ExtractChannel(ctx.PaddedMat, ctx.Channels[0], 0); // B
+            Cv2.ExtractChannel(ctx.PaddedMat, ctx.Channels[1], 1); // G
+            Cv2.ExtractChannel(ctx.PaddedMat, ctx.Channels[2], 2); // R
 
             int planeSize = targetSize * targetSize;
             var gcHandle  = GCHandle.Alloc(ctx.InputBuffer, GCHandleType.Pinned);
             try
             {
                 float* bufPtr = (float*)gcHandle.AddrOfPinnedObject();
-                Parallel.For(0, 3, ch =>
+                for (int ch = 0; ch < 3; ch++)
                 {
                     int srcCh = 2 - ch;  // BGR → RGB
                     ByteToFloatNormalizeSimd(
                         (byte*)ctx.Channels[srcCh].Data,
                         bufPtr + ch * planeSize,
                         planeSize);
-                });
+                }
             }
             finally { gcHandle.Free(); }
 
@@ -408,6 +474,11 @@ namespace MosaicCensorSystem.Detection
                     indices.Add(c);
             }
             ctx.TargetClassIndices = indices.ToArray();
+
+            if (ctx.TargetClassIndices.Length == 0)
+            {
+                LogCallback?.Invoke($"⚠️ 타겟 클래스 매칭 실패: [{string.Join(", ", Targets)}] (mode={(isObbMode ? "OBB" : "HBB")})");
+            }
         }
 
         private List<Detection> Postprocess(Tensor<float> output, float scale, int padX, int padY,

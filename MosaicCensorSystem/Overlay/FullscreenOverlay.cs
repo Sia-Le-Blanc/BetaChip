@@ -1,10 +1,10 @@
 #nullable disable
 using System;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using OpenCvSharp;
-using OpenCvSharp.Extensions;
 using MosaicCensorSystem.Utils;
 
 // 별칭을 정의하여 System.Drawing과 OpenCvSharp의 Point/Size 충돌을 방지합니다.
@@ -44,6 +44,13 @@ namespace MosaicCensorSystem.Overlay
         private Rectangle originalBounds;
         private bool isCompatibilityMode = false;
         private DisplayCompatibility.DisplaySettings displaySettings;
+
+        // 재사용 버퍼 (실시간성 최우선)
+        private Mat _bgraFrame;
+        private Mat _mask;
+        private Mat _resizedFrame;
+        private Mat _alpha;
+        private Bitmap _bitmapBuffer;
 
         public FullscreenOverlay(Rectangle bounds) : this()
         {
@@ -163,18 +170,19 @@ namespace MosaicCensorSystem.Overlay
 
             try
             {
-                using Mat transparentFrame = ConvertBlackToTransparent(processedFrame);
+                Mat src = processedFrame;
+                if (isCompatibilityMode && NeedsResize(processedFrame))
+                {
+                    _resizedFrame ??= new Mat();
+                    Cv2.Resize(processedFrame, _resizedFrame,
+                        new CvSize(this.ClientSize.Width, this.ClientSize.Height),
+                        interpolation: InterpolationFlags.Nearest);
+                    src = _resizedFrame;
+                }
 
-                // 호환성 모드에서는 리사이징 수행
-                if (isCompatibilityMode && NeedsResize(transparentFrame))
-                {
-                    using Mat resizedFrame = ResizeFrameForDisplay(transparentFrame);
-                    UpdateBitmap(resizedFrame);
-                }
-                else
-                {
-                    UpdateBitmap(transparentFrame);
-                }
+                EnsureBuffers(src.Width, src.Height);
+                ConvertBlackToTransparentInto(src, _bgraFrame, _mask, _alpha);
+                UpdateBitmapInPlace(_bgraFrame);
             }
             catch (Exception ex)
             {
@@ -190,78 +198,82 @@ namespace MosaicCensorSystem.Overlay
                    Math.Abs(frame.Height - this.ClientSize.Height) > 1;
         }
 
-        private Mat ResizeFrameForDisplay(Mat frame)
+        private void EnsureBuffers(int width, int height)
         {
-            Mat resized = new Mat();
-            Cv2.Resize(frame, resized,
-                new CvSize(this.ClientSize.Width, this.ClientSize.Height),
-                interpolation: InterpolationFlags.Nearest);
-            return resized;
+            if (_bgraFrame == null || _bgraFrame.Width != width || _bgraFrame.Height != height)
+            {
+                _bgraFrame?.Dispose();
+                _mask?.Dispose();
+                _alpha?.Dispose();
+                _bgraFrame = new Mat(height, width, MatType.CV_8UC4);
+                _mask = new Mat(height, width, MatType.CV_8UC1);
+                _alpha = new Mat(height, width, MatType.CV_8UC1, Scalar.All(255));
+            }
         }
 
-        private void UpdateBitmap(Mat frame)
+        private void UpdateBitmapInPlace(Mat frame)
         {
-            Bitmap newBitmap = BitmapConverter.ToBitmap(frame);
+            lock (bitmapLock)
+            {
+                if (_bitmapBuffer == null ||
+                    _bitmapBuffer.Width != frame.Width ||
+                    _bitmapBuffer.Height != frame.Height)
+                {
+                    _bitmapBuffer?.Dispose();
+                    _bitmapBuffer = new Bitmap(frame.Width, frame.Height, PixelFormat.Format32bppArgb);
+                    currentBitmap = _bitmapBuffer;
+                }
 
-            if (this.InvokeRequired)
+                var rect = new Rectangle(0, 0, frame.Width, frame.Height);
+                BitmapData data = _bitmapBuffer.LockBits(rect, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                try
+                {
+                    unsafe
+                    {
+                        byte* src = (byte*)frame.Data;
+                        byte* dst = (byte*)data.Scan0;
+                        int srcStride = (int)frame.Step();
+                        int dstStride = data.Stride;
+                        int rowBytes = frame.Width * 4;
+                        for (int y = 0; y < frame.Height; y++)
+                        {
+                            Buffer.MemoryCopy(src + y * srcStride, dst + y * dstStride, dstStride, rowBytes);
+                        }
+                    }
+                }
+                finally
+                {
+                    _bitmapBuffer.UnlockBits(data);
+                }
+            }
+
+            if (this.IsHandleCreated && !this.IsDisposed)
             {
                 try
                 {
-                    this.BeginInvoke(new Action(() => SwapBitmap(newBitmap)));
+                    this.BeginInvoke(new Action(() => { if (!this.IsDisposed) this.Invalidate(); }));
                 }
-                catch (ObjectDisposedException)
-                {
-                    newBitmap?.Dispose();
-                }
-            }
-            else
-            {
-                SwapBitmap(newBitmap);
+                catch { }
             }
         }
 
-        private void SwapBitmap(Bitmap newBitmap)
+        private static void ConvertBlackToTransparentInto(Mat originalFrame, Mat dstBgra, Mat mask, Mat alpha)
         {
-            Bitmap oldBitmap = null;
-            
-            lock (bitmapLock)
-            {
-                oldBitmap = currentBitmap;
-                currentBitmap = newBitmap;
-            }
-            
-            // lock 밖에서 Dispose (Dispose가 오래 걸릴 수 있으므로)
-            try
-            {
-                oldBitmap?.Dispose();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Overlay] 이전 비트맵 Dispose 실패: {ex.Message}");
-            }
-            
-            this.Invalidate();
-        }
-
-        private Mat ConvertBlackToTransparent(Mat originalFrame)
-        {
-            Mat result = new Mat();
-
-            // BGRA로 변환
             if (originalFrame.Channels() == 3)
             {
-                Cv2.CvtColor(originalFrame, result, ColorConversionCodes.BGR2BGRA);
+                Cv2.CvtColor(originalFrame, dstBgra, ColorConversionCodes.BGR2BGRA);
             }
             else
             {
-                result = originalFrame.Clone();
+                originalFrame.CopyTo(dstBgra);
             }
 
-            using Mat mask = new Mat();
-            Cv2.InRange(result, new Scalar(3, 3, 3, 0), new Scalar(3, 3, 3, 255), mask);
-            result.SetTo(new Scalar(255, 0, 255, 255), mask); // 마젠타 (BGRA)
+            // 캡처 알파가 0일 수 있으므로 강제로 불투명 처리
+            if (alpha != null && !alpha.IsDisposed)
+                Cv2.InsertChannel(alpha, dstBgra, 3);
 
-            return result;
+            Cv2.InRange(dstBgra, new Scalar(3, 3, 3, 0), new Scalar(3, 3, 3, 255), mask);
+            dstBgra.SetTo(new Scalar(255, 0, 255, 255), mask); // 마젠타 (BGRA)
         }
 
         public void SetMonitorBounds(int x, int y, int width, int height)
@@ -361,7 +373,17 @@ namespace MosaicCensorSystem.Overlay
                     }
                     catch { }
                     currentBitmap = null;
+                    try { _bitmapBuffer?.Dispose(); } catch { }
+                    _bitmapBuffer = null;
                 }
+                _bgraFrame?.Dispose();
+                _bgraFrame = null;
+                _mask?.Dispose();
+                _mask = null;
+                _alpha?.Dispose();
+                _alpha = null;
+                _resizedFrame?.Dispose();
+                _resizedFrame = null;
             }
             base.Dispose(disposing);
         }

@@ -49,6 +49,13 @@ namespace MosaicCensorSystem
         private const int STICKER_CLEANUP_INTERVAL_SECONDS = 30;
         private DateTime lastStickerCleanup = DateTime.Now;
 
+        // 디버그/관찰용 런타임 로그 (1초 주기)
+        private readonly Stopwatch _rtLogClock = Stopwatch.StartNew();
+        private int _rtFrameCount = 0;
+        private int _rtDetectCount = 0;
+        private int _rtCensorCount = 0;
+        private int _rtNullFrameCount = 0;
+
         private static readonly string SCREENSHOTS_FOLDER = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "BetaChip Screenshots");
         private static readonly string DESKTOP_SHORTCUT = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "BetaChip 스크린샷.lnk");
 
@@ -135,24 +142,28 @@ namespace MosaicCensorSystem
             if (rawFrame == null || rawFrame.IsDisposed || rawFrame.Empty())
             {
                 overlayTextManager?.Update(false);
+                _rtNullFrameCount++;
+                LogRuntimeOncePerSecond();
                 return null;
             }
 
-            Mat processedFrame = null;
             try
             {
-                processedFrame = rawFrame.Clone();
+                Mat processedFrame = rawFrame;
+                _rtFrameCount++;
 
                 if (!currentSettings.EnableDetection)
                 {
                     overlayTextManager?.Update(false);
+                    LogRuntimeOncePerSecond();
                     return processedFrame;
                 }
 
                 // 호출 스레드(InferenceThread 또는 UI 스레드)별 전용 컨텍스트를 사용하여
                 // inputBuffer·Mat 충돌 없이 InferenceSession.Run()을 병렬 호출합니다.
-                List<Detection.Detection> detections = processor.DetectObjects(rawFrame, _perThreadCtx.Value);
+                List<Detection.Detection> detections = processor.DetectObjects(processedFrame, _perThreadCtx.Value);
                 bool detectionActive = detections != null && detections.Count > 0;
+                _rtDetectCount += detections?.Count ?? 0;
                 
                 // 캡션 기능 등급 체크
                 if (currentSettings.EnableCaptions && _subInfo.Tier == "plus")
@@ -169,6 +180,7 @@ namespace MosaicCensorSystem
                     if (currentSettings.EnableCensoring)
                     {
                         processor.ApplySingleCensorOptimized(processedFrame, detection);
+                        _rtCensorCount++;
                     }
 
                     // 스티커 기능 등급 체크 (Patreon 이상)
@@ -208,14 +220,29 @@ namespace MosaicCensorSystem
                     overlayTextManager?.DrawOverlayOnFrame(processedFrame);
                 }
 
+                LogRuntimeOncePerSecond();
+
                 return processedFrame;
             }
             catch (Exception ex)
             {
                 ui.LogMessage($"❌ ProcessFrame 오류: {ex.Message}");
-                processedFrame?.Dispose();
                 return null;
             }
+        }
+
+        private void LogRuntimeOncePerSecond()
+        {
+            if (_rtLogClock.Elapsed.TotalSeconds < 1.0) return;
+            ui.LogMessage(
+                $"🧪 RT| frames:{_rtFrameCount} det:{_rtDetectCount} censor:{_rtCensorCount} " +
+                $"null:{_rtNullFrameCount} ED:{currentSettings.EnableDetection} EC:{currentSettings.EnableCensoring} " +
+                $"CT:{processor.CurrentExecutionProvider}");
+            _rtFrameCount = 0;
+            _rtDetectCount = 0;
+            _rtCensorCount = 0;
+            _rtNullFrameCount = 0;
+            _rtLogClock.Restart();
         }
 
         private void CleanupExpiredStickerTracking()
@@ -244,7 +271,7 @@ namespace MosaicCensorSystem
             {
                 ui.LogMessage("📸 검열된 화면 캡처 시작...");
                 using Mat rawFrame = capturer.GetFrame();
-                using Mat processedFrame = ProcessFrame(rawFrame);
+                Mat processedFrame = ProcessFrame(rawFrame);
 
                 if (processedFrame == null)
                 {
@@ -256,7 +283,8 @@ namespace MosaicCensorSystem
                 string fileName = $"BetaChip_{timestamp}.jpg";
                 string filePath = Path.Combine(SCREENSHOTS_FOLDER, fileName);
 
-                processedFrame.SaveImage(filePath);
+                using Mat snapshot = processedFrame.Clone();
+                snapshot.SaveImage(filePath);
                 
                 ui.LogMessage($"✅ 캡처 저장 완료! 파일: {fileName}");
                 MessageBox.Show($"검열된 스크린샷이 저장되었습니다!\n\n파일명: {fileName}", "캡처 저장 완료", MessageBoxButtons.OK, MessageBoxIcon.Information);

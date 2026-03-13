@@ -21,7 +21,7 @@ namespace MosaicCensorSystem.Management
         private readonly int  _monitorIndex;   // 0-based, 프로파일러 로그 식별자
 
         // ── 제로-지연 파이프라인 (Capacity=1, DropOldest) ──────────────────────
-        private Channel<Mat> _frameChannel;
+        private Channel<ScreenCapture.CapturedFrame> _frameChannel;
         private Thread _captureThread;
         private Thread _inferenceThread;
 
@@ -39,11 +39,16 @@ namespace MosaicCensorSystem.Management
         private readonly Stopwatch _swInference  = new Stopwatch();
         private readonly Stopwatch _swRender     = new Stopwatch();
         private readonly Stopwatch _profilerClock = Stopwatch.StartNew();
+        private readonly Stopwatch _captureLogClock = Stopwatch.StartNew();
 
         private int    _frameCount       = 0;
         private double _totalCaptureMs   = 0;
         private double _totalInferenceMs = 0;
         private double _totalRenderMs    = 0;
+
+        private int _capCount = 0;
+        private int _enqCount = 0;
+        private int _capDrop = 0;
 
         /// <summary>FREE 등급(단일 모니터): 외부에서 생성된 ScreenCapture를 받습니다.</summary>
         public SingleMonitorManager(ScreenCapture screenCapturer)
@@ -121,9 +126,9 @@ namespace MosaicCensorSystem.Management
         // ── 파이프라인 초기화 ─────────────────────────────────────────────────
         private void StartPipeline()
         {
-            _frameChannel = Channel.CreateBounded<Mat>(new BoundedChannelOptions(1)
+            _frameChannel = Channel.CreateBounded<ScreenCapture.CapturedFrame>(new BoundedChannelOptions(1)
             {
-                SingleReader = false,   // CaptureLoop(drain) + InferenceLoop(consume) 양쪽에서 읽음
+                SingleReader = false,
                 SingleWriter = true,
                 AllowSynchronousContinuations = false,
             });
@@ -174,23 +179,41 @@ namespace MosaicCensorSystem.Management
                 {
                     if (capturer == null) break;
 
-                    _swCapture.Restart();
-                    Mat rawFrame = capturer.GetFrame();
-                    _totalCaptureMs += _swCapture.Elapsed.TotalMilliseconds;
+                    // 오래된 대기 프레임을 먼저 폐기하여 버퍼를 확보
+                    while (_frameChannel.Reader.TryRead(out var stale))
+                        stale?.Dispose();
 
-                    if (rawFrame == null || rawFrame.IsDisposed || rawFrame.Empty())
+                    _swCapture.Restart();
+                    var captured = capturer.CaptureFrame();
+                    _totalCaptureMs += _swCapture.Elapsed.TotalMilliseconds;
+                    _capCount++;
+
+                    if (captured == null || captured.Frame == null || captured.Frame.IsDisposed || captured.Frame.Empty())
                     {
-                        rawFrame?.Dispose();
+                        captured?.Dispose();
+                        _capDrop++;
                         Thread.Sleep(1);
                         continue;
                     }
 
-                    // DropOldest: 낡은 대기 프레임 명시 폐기 → Mat 메모리 누수 방지
-                    while (_frameChannel.Reader.TryRead(out Mat stale))
-                        stale?.Dispose();
+                    if (!writer.TryWrite(captured))
+                    {
+                        captured.Dispose();
+                        _capDrop++;
+                    }
+                    else
+                    {
+                        _enqCount++;
+                    }
 
-                    if (!writer.TryWrite(rawFrame))
-                        rawFrame.Dispose();
+                    if (_captureLogClock.Elapsed.TotalSeconds >= 1.0)
+                    {
+                        ui?.LogMessage($"🧪 CAP| frames:{_capCount} enq:{_enqCount} drop:{_capDrop}");
+                        _capCount = 0;
+                        _enqCount = 0;
+                        _capDrop = 0;
+                        _captureLogClock.Restart();
+                    }
                 }
                 catch (ChannelClosedException)  { break; }
                 catch (ObjectDisposedException) { break; }
@@ -212,16 +235,16 @@ namespace MosaicCensorSystem.Management
 
             while (isRunning && !isDisposed)
             {
+                ScreenCapture.CapturedFrame captured = null;
                 Mat rawFrame       = null;
                 Mat processedFrame = null;
 
                 try
                 {
-                    if (!reader.TryRead(out rawFrame))
-                    {
-                        Thread.Sleep(1);
-                        continue;
-                    }
+                    if (!reader.WaitToReadAsync().AsTask().GetAwaiter().GetResult())
+                        break;
+                    if (!reader.TryRead(out captured)) continue;
+                    rawFrame = captured.Frame;
 
                     _swInference.Restart();
                     processedFrame = processFrame?.Invoke(rawFrame);
@@ -258,8 +281,7 @@ namespace MosaicCensorSystem.Management
                 }
                 finally
                 {
-                    rawFrame?.Dispose();
-                    processedFrame?.Dispose();
+                    captured?.Dispose();
                 }
             }
         }
