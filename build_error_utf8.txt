@@ -1,0 +1,11 @@
+﻿  蹂듭썝???꾨줈?앺듃瑜??뺤씤?섎뒗 以?..
+  蹂듭썝??紐⑤뱺 ?꾨줈?앺듃媛 理쒖떊 ?곹깭?낅땲??
+c:\Users\Win\Desktop\BetaChip\MosaicCensorSystem\Detection\MosaicProcessor.cs(324,58): error CS0111: 'MosaicProcessor' ?뺤떇? ?숈씪??留ㅺ컻 蹂???뺤떇??媛吏?'Preprocess' 硫ㅻ쾭瑜?誘몃━ ?뺤쓽?⑸땲?? [c:\Users\Win\Desktop\BetaChip\MosaicCensorSystem\MosaicCensorSystem.csproj]
+
+鍮뚮뱶?섏? 紐삵뻽?듬땲??
+
+c:\Users\Win\Desktop\BetaChip\MosaicCensorSystem\Detection\MosaicProcessor.cs(324,58): error CS0111: 'MosaicProcessor' ?뺤떇? ?숈씪??留ㅺ컻 蹂???뺤떇??媛吏?'Preprocess' 硫ㅻ쾭瑜?誘몃━ ?뺤쓽?⑸땲?? [c:\Users\Win\Desktop\BetaChip\MosaicCensorSystem\MosaicCensorSystem.csproj]
+    寃쎄퀬 0媛?
+    ?ㅻ쪟 1媛?
+
+寃쎄낵 ?쒓컙: 00:00:01.45

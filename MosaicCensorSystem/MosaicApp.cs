@@ -60,6 +60,13 @@ namespace MosaicCensorSystem
                 uiController.LogMessage($"✅ 로그인 성공: {_subInfo.Email} ([{_subInfo.Tier.ToUpper()}] 등급)");
             }
 
+#if DEBUG
+            // [DEVELOPER MODE]: 강제로 모든 기능을 해제 (Patreon 최고 등급으로 설정)
+            _subInfo.Tier = "patreon";
+            _subInfo.Email = "Developer (All Features Unlocked)";
+            uiController.LogMessage("🛠️ [DEV MODE] 개발자 모드가 감지되어 모든 기능이 해제된 최고 등급(Patreon)으로 강제 적용됩니다.");
+#endif
+
             // 구독 정보를 전달하며 서비스 초기화
             censorService = new CensorService(uiController, _subInfo);
 

@@ -55,6 +55,7 @@ namespace MosaicCensorSystem
         private int _rtDetectCount = 0;
         private int _rtCensorCount = 0;
         private int _rtNullFrameCount = 0;
+        private bool _firstInferenceLogged = false;
 
         private static readonly string SCREENSHOTS_FOLDER = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "BetaChip Screenshots");
         private static readonly string DESKTOP_SHORTCUT = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "BetaChip 스크린샷.lnk");
@@ -149,6 +150,11 @@ namespace MosaicCensorSystem
 
             try
             {
+                if (!_firstInferenceLogged) { 
+                    ui?.LogMessage("🧠 [Debug] AI 파이프라인 진입 완료. (추론 시작)");
+                    try { rawFrame?.SaveImage("debug_capture.png"); ui?.LogMessage("💾 [Debug] AI 시야 확인용 이미지를 debug_capture.png로 저장했습니다."); } catch {}
+                    _firstInferenceLogged = true; 
+                }
                 Mat processedFrame = rawFrame;
                 _rtFrameCount++;
 
@@ -234,10 +240,12 @@ namespace MosaicCensorSystem
         private void LogRuntimeOncePerSecond()
         {
             if (_rtLogClock.Elapsed.TotalSeconds < 1.0) return;
+            
+            float fps = (float)_rtFrameCount / (float)_rtLogClock.Elapsed.TotalSeconds;
             ui.LogMessage(
-                $"🧪 RT| frames:{_rtFrameCount} det:{_rtDetectCount} censor:{_rtCensorCount} " +
-                $"null:{_rtNullFrameCount} ED:{currentSettings.EnableDetection} EC:{currentSettings.EnableCensoring} " +
-                $"CT:{processor.CurrentExecutionProvider}");
+                $"⏱️ [System] FPS: {fps:F1} | Device: {processor.CurrentExecutionProvider}\n" +
+                $"📊 [AI Stat] Total Detections: {_rtDetectCount} | Censors Applied: {_rtCensorCount}");
+            
             _rtFrameCount = 0;
             _rtDetectCount = 0;
             _rtCensorCount = 0;
@@ -337,6 +345,31 @@ namespace MosaicCensorSystem
             }
         }
         
+        public void SetTargetStickerConfig(string targetName, bool useSticker, List<string> pngPaths)
+        {
+            targetStickerEnabled[targetName] = useSticker;
+            
+            // 기존 캐시된 매트릭스 메모리 해제
+            if (targetStickersCache.TryGetValue(targetName, out var oldList))
+            {
+                foreach (var mat in oldList) mat?.Dispose();
+            }
+
+            var newList = new List<Mat>();
+            if (pngPaths != null)
+            {
+                foreach (var path in pngPaths)
+                {
+                    if (File.Exists(path))
+                    {
+                        var loaded = Cv2.ImRead(path, ImreadModes.Unchanged);
+                        if (!loaded.Empty()) newList.Add(loaded);
+                    }
+                }
+            }
+            targetStickersCache[targetName] = newList;
+        }
+
         private void BlendStickerOnMosaic(Mat frame, Detection.Detection detection, Mat sticker)
         {
             // OBB 모드이고 유효한 각도가 있으면 회전 렌더링 경로로 분기

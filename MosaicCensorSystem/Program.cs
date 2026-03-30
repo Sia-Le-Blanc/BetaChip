@@ -89,8 +89,12 @@ namespace MosaicCensorSystem
             // 6. 메인 애플리케이션 실행
             try
             {
-                var app = new MosaicApp();
-                app.Run();
+                // 기존 기능 앱 잠시 주석 처리
+                // var app = new MosaicApp();
+                // app.Run();
+
+                // UI 목업 시연 실행
+                Application.Run(new UI.MockupUIForm());
             }
             catch (Exception ex)
             {

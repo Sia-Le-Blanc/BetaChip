@@ -17,16 +17,12 @@ namespace MosaicCensorSystem.Management
         private GuiController ui;
         private readonly ScreenCapture capturer;
         private readonly FullscreenOverlay overlay;
-        private readonly bool _ownsCapture;    // true이면 Dispose 시 capturer를 직접 해제
-        private readonly int  _monitorIndex;   // 0-based, 프로파일러 로그 식별자
+        private readonly bool _ownsCapture;
+        private readonly int _monitorIndex;
 
-        // ── 제로-지연 파이프라인 (Capacity=1, DropOldest) ──────────────────────
         private Channel<ScreenCapture.CapturedFrame> _frameChannel;
         private Thread _captureThread;
         private Thread _inferenceThread;
-
-        // ── 오버레이 렌더 타이머 (33ms ≈ 30fps, 추론과 완전히 독립) ───────────
-        private System.Threading.Timer _renderTimer;
 
         private volatile bool isRunning = false;
         private CensorSettings settings = new(true, true, false, false);
@@ -34,270 +30,149 @@ namespace MosaicCensorSystem.Management
         private readonly object disposeLock = new object();
         private bool isDisposed = false;
 
-        // ── 단계별 성능 프로파일러 ────────────────────────────────────────────
         private readonly Stopwatch _swCapture    = new Stopwatch();
         private readonly Stopwatch _swInference  = new Stopwatch();
         private readonly Stopwatch _swRender     = new Stopwatch();
         private readonly Stopwatch _profilerClock = Stopwatch.StartNew();
         private readonly Stopwatch _captureLogClock = Stopwatch.StartNew();
+        private bool _firstCaptureLogged = false;
 
-        private int    _frameCount       = 0;
-        private double _totalCaptureMs   = 0;
+        private int _frameCount = 0;
+        private double _totalCaptureMs = 0;
         private double _totalInferenceMs = 0;
-        private double _totalRenderMs    = 0;
+        private double _totalRenderMs = 0;
 
-        private int _capCount = 0;
-        private int _enqCount = 0;
-        private int _capDrop = 0;
-
-        /// <summary>FREE 등급(단일 모니터): 외부에서 생성된 ScreenCapture를 받습니다.</summary>
         public SingleMonitorManager(ScreenCapture screenCapturer)
         {
             _monitorIndex = 0;
-            _ownsCapture  = false;
+            _ownsCapture = false;
             capturer = screenCapturer;
-            overlay  = new FullscreenOverlay(Screen.PrimaryScreen.Bounds);
+            overlay = new FullscreenOverlay(Screen.PrimaryScreen.Bounds);
         }
 
-        /// <summary>
-        /// PLUS/PATREON 등급(다중 모니터): 주어진 bounds에 전용 ScreenCapture를 생성합니다.
-        /// 각 모니터를 독립 캡처하므로 종횡비 왜곡이 원천 차단됩니다.
-        /// </summary>
         public SingleMonitorManager(System.Drawing.Rectangle bounds, int monitorIndex)
         {
             _monitorIndex = monitorIndex;
-            _ownsCapture  = true;
+            _ownsCapture = true;
             capturer = new ScreenCapture(bounds);
-            overlay  = new FullscreenOverlay(bounds);
+            overlay = new FullscreenOverlay(bounds);
         }
 
         public int MonitorIndex => _monitorIndex;
-
-        public void Initialize(GuiController uiController)
-        {
-            ui = uiController;
-        }
+        public void Initialize(GuiController uiController) => ui = uiController;
 
         public void Start(Func<Mat, Mat> frameProcessor)
         {
-            lock (disposeLock)
-            {
+            lock (disposeLock) {
                 if (isRunning || isDisposed) return;
-                isRunning    = true;
+                isRunning = true;
                 processFrame = frameProcessor;
-
-                try
-                {
+                try {
                     overlay.Show();
                     StartPipeline();
-                }
-                catch (Exception ex)
-                {
-                    ui?.LogMessage($"🚨 [모니터 {_monitorIndex + 1}] 시작 실패: {ex.Message}");
-                    isRunning = false;
-                }
+                } catch { isRunning = false; }
             }
         }
 
         public void Stop()
         {
-            lock (disposeLock)
-            {
+            lock (disposeLock) {
                 if (!isRunning) return;
                 isRunning = false;
-
-                _renderTimer?.Dispose();
-                _renderTimer = null;
-
                 try { _frameChannel?.Writer.TryComplete(); } catch { }
-
                 _captureThread?.Join(1500);
                 _inferenceThread?.Join(1500);
-
                 try { overlay?.Hide(); } catch { }
             }
         }
 
-        public void UpdateSettings(CensorSettings newSettings)
-        {
-            settings = newSettings;
-        }
+        public void UpdateSettings(CensorSettings newSettings) => settings = newSettings;
 
-        // ── 파이프라인 초기화 ─────────────────────────────────────────────────
         private void StartPipeline()
         {
-            _frameChannel = Channel.CreateBounded<ScreenCapture.CapturedFrame>(new BoundedChannelOptions(1)
-            {
-                SingleReader = false,
-                SingleWriter = true,
-                AllowSynchronousContinuations = false,
+            _frameChannel = Channel.CreateBounded<ScreenCapture.CapturedFrame>(new BoundedChannelOptions(1) {
+                SingleReader = true, SingleWriter = true, AllowSynchronousContinuations = false
             });
-
-            _frameCount = 0;
-            _totalCaptureMs = _totalInferenceMs = _totalRenderMs = 0;
+            _frameCount = 0; _totalCaptureMs = _totalInferenceMs = _totalRenderMs = 0;
             _profilerClock.Restart();
 
-            // 렌더 타이머: 추론 속도와 무관하게 30fps로 오버레이를 항상 최신 상태로 유지
-            _renderTimer = new System.Threading.Timer(_ =>
-            {
-                try
-                {
-                    if (overlay != null && !overlay.IsDisposed)
-                        overlay.BeginInvoke(new Action(() =>
-                        {
-                            if (!overlay.IsDisposed) overlay.Invalidate();
-                        }));
-                }
-                catch { }
-            }, null, 0, 33);
-
-            _captureThread = new Thread(CaptureLoop)
-            {
-                IsBackground = true,
-                Name         = $"BetaChip_Capture_M{_monitorIndex + 1}",
-                Priority     = ThreadPriority.AboveNormal
-            };
-            _inferenceThread = new Thread(InferenceLoop)
-            {
-                IsBackground = true,
-                Name         = $"BetaChip_Inference_M{_monitorIndex + 1}"
-            };
-
+            _captureThread = new Thread(CaptureLoop) { IsBackground = true, Priority = ThreadPriority.AboveNormal };
+            _inferenceThread = new Thread(InferenceLoop) { IsBackground = true };
             _captureThread.Start();
             _inferenceThread.Start();
+            ui?.LogMessage($"🚀 [System] M{_monitorIndex + 1} 캡처 및 추론 루프 기동 완료.");
         }
 
-        // ── 생산자 스레드: 독립 캡처 + DropOldest ──────────────────────────────
-        // 이 모니터의 bounds만 캡처하므로 다른 모니터의 해상도/종횡비에 영향을 받지 않음
         private void CaptureLoop()
         {
             var writer = _frameChannel.Writer;
-
-            while (isRunning && !isDisposed)
-            {
-                try
-                {
+            while (isRunning && !isDisposed) {
+                try {
                     if (capturer == null) break;
-
-                    // 오래된 대기 프레임을 먼저 폐기하여 버퍼를 확보
-                    while (_frameChannel.Reader.TryRead(out var stale))
-                        stale?.Dispose();
-
+                    
                     _swCapture.Restart();
                     var captured = capturer.CaptureFrame();
                     _totalCaptureMs += _swCapture.Elapsed.TotalMilliseconds;
-                    _capCount++;
-
-                    if (captured == null || captured.Frame == null || captured.Frame.IsDisposed || captured.Frame.Empty())
-                    {
-                        captured?.Dispose();
-                        _capDrop++;
-                        Thread.Sleep(1);
-                        continue;
+                    if (captured == null || captured.Frame == null || captured.Frame.IsDisposed) {
+                        ui?.LogMessage("⚠️ [Debug] CaptureFrame returned NULL (Checking handle or buffer...)");
+                        captured?.Dispose(); Thread.Sleep(100); continue;
                     }
 
-                    if (!writer.TryWrite(captured))
-                    {
-                        captured.Dispose();
-                        _capDrop++;
+                    // [DEBUG] 단 1회만 성공 로그 남김
+                    if (!_firstCaptureLogged) { 
+                        ui?.LogMessage($"📸 [Debug] M{_monitorIndex+1} 첫 캡처 성공! ({captured.Frame.Width}x{captured.Frame.Height})"); 
+                        _firstCaptureLogged = true; 
                     }
-                    else
-                    {
-                        _enqCount++;
-                    }
-
-                    if (_captureLogClock.Elapsed.TotalSeconds >= 1.0)
-                    {
-                        ui?.LogMessage($"🧪 CAP| frames:{_capCount} enq:{_enqCount} drop:{_capDrop}");
-                        _capCount = 0;
-                        _enqCount = 0;
-                        _capDrop = 0;
-                        _captureLogClock.Restart();
-                    }
-                }
-                catch (ChannelClosedException)  { break; }
-                catch (ObjectDisposedException) { break; }
-                catch (Exception ex) when (isRunning)
-                {
-                    ui?.LogMessage($"🚨 [모니터 {_monitorIndex + 1}] 캡처 오류: {ex.Message}");
-                    Thread.Sleep(10);
+                    if (!writer.TryWrite(captured)) captured.Dispose();
+                } catch (Exception ex) { 
+                    ui?.LogMessage($"❌ [Error] CaptureLoop {MonitorIndex+1}: {ex.Message}");
+                    break; 
                 }
             }
-
             writer.TryComplete();
+            ui?.LogMessage($"⏹ [System] CaptureLoop {MonitorIndex+1} 종료됨.");
         }
 
-        // ── 소비자 스레드: 오포르투니스틱 추론 ────────────────────────────────
-        // 이전 추론 완료 즉시 + 새 프레임이 있을 때만 동작 (고정 FPS 슬립 없음)
         private void InferenceLoop()
         {
             var reader = _frameChannel.Reader;
-
-            while (isRunning && !isDisposed)
-            {
+            while (isRunning && !isDisposed) {
                 ScreenCapture.CapturedFrame captured = null;
-                Mat rawFrame       = null;
-                Mat processedFrame = null;
-
-                try
-                {
-                    if (!reader.WaitToReadAsync().AsTask().GetAwaiter().GetResult())
-                        break;
+                try {
+                    if (!reader.WaitToReadAsync().AsTask().GetAwaiter().GetResult()) break;
                     if (!reader.TryRead(out captured)) continue;
-                    rawFrame = captured.Frame;
 
                     _swInference.Restart();
-                    processedFrame = processFrame?.Invoke(rawFrame);
+                    var processed = processFrame?.Invoke(captured.Frame);
                     _totalInferenceMs += _swInference.Elapsed.TotalMilliseconds;
 
                     _swRender.Restart();
-                    if (processedFrame != null && !processedFrame.IsDisposed && overlay != null)
-                        overlay.UpdateFrame(processedFrame);
+                    if (processed != null && overlay != null) overlay.UpdateFrame(processed);
                     _totalRenderMs += _swRender.Elapsed.TotalMilliseconds;
 
-                    // 1초마다 모니터별 성능 로그
                     _frameCount++;
-                    if (_profilerClock.Elapsed.TotalSeconds >= 1.0)
-                    {
+                    if (_profilerClock.Elapsed.TotalSeconds >= 1.0) {
                         int n = Math.Max(1, _frameCount);
-                        ui?.LogMessage(
-                            $"⏱ [모니터 {_monitorIndex + 1}] FPS:{_frameCount} | " +
-                            $"캡처:{_totalCaptureMs / n:F1}ms | " +
-                            $"추론:{_totalInferenceMs / n:F1}ms | " +
-                            $"렌더:{_totalRenderMs / n:F1}ms");
-
-                        _frameCount = 0;
-                        _totalCaptureMs = _totalInferenceMs = _totalRenderMs = 0;
-                        _profilerClock.Restart();
+                        ui?.LogMessage($"⏱ [M{_monitorIndex + 1}] FPS:{_frameCount} | C:{_totalCaptureMs/n:F1}ms | I:{_totalInferenceMs/n:F1}ms | R:{_totalRenderMs/n:F1}ms");
+                        _frameCount = 0; _totalCaptureMs = _totalInferenceMs = _totalRenderMs = 0; _profilerClock.Restart();
                     }
+                } catch (Exception ex) { 
+                    ui?.LogMessage($"❌ [Error] InferenceLoop {MonitorIndex+1}: {ex.Message}");
+                    break; 
                 }
-                catch (ChannelClosedException)  { break; }
-                catch (ObjectDisposedException) { break; }
-                catch (Exception ex) when (isRunning)
-                {
-                    ui?.LogMessage($"🚨 [모니터 {_monitorIndex + 1}] 추론 오류: {ex.Message}");
-                    if (!isRunning || isDisposed) break;
-                    Thread.Sleep(50);
-                }
-                finally
-                {
-                    captured?.Dispose();
-                }
+                finally { captured?.Dispose(); }
             }
+            ui?.LogMessage($"⏹ [System] InferenceLoop {MonitorIndex+1} 종료됨.");
         }
 
         public void Dispose()
         {
-            lock (disposeLock)
-            {
+            lock (disposeLock) {
                 if (isDisposed) return;
                 isDisposed = true;
-
                 Stop();
-
-                // 다중 모니터 모드에서만 capturer를 직접 소유하므로 여기서 해제
-                if (_ownsCapture) try { capturer?.Dispose(); } catch { }
-                try { overlay?.Dispose(); } catch { }
+                if (_ownsCapture) capturer?.Dispose();
+                overlay?.Dispose();
             }
         }
     }
