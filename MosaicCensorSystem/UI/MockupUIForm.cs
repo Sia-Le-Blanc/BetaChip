@@ -128,8 +128,24 @@ namespace MosaicCensorSystem.UI
     // ==========================================
     // 메인 목업 UI (Responsive Dark Theme Form)
     // ==========================================
-    public class MockupUIForm : Form
+    public class MockupUIForm : Form, IGuiController
     {
+        public event Action<bool> DetectionToggled;
+        public event Action<bool> CensoringToggled;
+        public event Action<bool> StickerToggled;
+        public event Action<bool> CaptionToggled;
+        public event Action<Detection.CensorType> CensorTypeChanged;
+        public event Action<int> StrengthChanged;
+        public event Action<float> ConfidenceChanged;
+        public event Action StartClicked;
+        public event Action StopClicked;
+        public event Action CaptureAndSaveClicked;
+        public event Action<List<string>> TargetsChanged;
+        public event Action GpuSetupClicked;
+        public event Action<bool> DpiCompatToggled;
+        public event Action<bool> ModelTypeChanged;
+        public event Action<string, bool, List<string>> TargetStickerConfigChanged;
+
         private ComboBox langDropdown;
         private Label titleLabel;
         
@@ -212,8 +228,11 @@ namespace MosaicCensorSystem.UI
             // 2-1. 좌측 컨트롤 버튼
             Panel controlPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent, Margin = new Padding(0) };
             startButton = CreateBtn(Color.FromArgb(48, 209, 88), 0);
+            startButton.Click += (s, e) => StartClicked?.Invoke();
             stopButton = CreateBtn(Color.FromArgb(255, 69, 58), 70);
+            stopButton.Click += (s, e) => StopClicked?.Invoke();
             captureButton = CreateBtn(Color.FromArgb(10, 132, 255), 140);
+            captureButton.Click += (s, e) => CaptureAndSaveClicked?.Invoke();
             controlPanel.Controls.AddRange(new Control[] { startButton, stopButton, captureButton });
             bodyP.Controls.Add(controlPanel, 0, 0);
 
@@ -240,6 +259,8 @@ namespace MosaicCensorSystem.UI
             modelLabel = new Label { AutoSize = true, ForeColor = Color.Gray, Margin = new Padding(0, 5, 5, 0) };
             stdRadio = new RadioButton { AutoSize = true, Margin = new Padding(5, 3, 10, 3) };
             obbRadio = new RadioButton { AutoSize = true, Checked = true, Margin = new Padding(5, 3, 10, 3) };
+            stdRadio.CheckedChanged += (s, e) => { if (stdRadio.Checked) ModelTypeChanged?.Invoke(false); };
+            obbRadio.CheckedChanged += (s, e) => { if (obbRadio.Checked) ModelTypeChanged?.Invoke(true); };
             mdlP.Controls.AddRange(new Control[] { modelLabel, stdRadio, obbRadio });
 
             FlowLayoutPanel swP = new FlowLayoutPanel { AutoSize = true, WrapContents = true };
@@ -247,9 +268,18 @@ namespace MosaicCensorSystem.UI
 
             Panel tgl1 = new Panel { Size = new Size(180, 30) };
             overlayToggle = new ToggleSwitch { Location = new Point(0, 2), Checked = true };
+            overlayToggle.CheckedChanged += (s, e) => DetectionToggled?.Invoke(overlayToggle.Checked);
             overlayL = new Label { Location = new Point(50, 2), AutoSize = true };
             overlayL.Tag = "EnableOverlay"; dynamicLabels.Add(overlayL);
             tgl1.Controls.AddRange(new Control[] { overlayToggle, overlayL });
+            
+            // Add stickerToggle right below overlayToggle or next to it (expand panel temporarily)
+            Panel tgl2 = new Panel { Size = new Size(180, 30) };
+            stickerToggle = new ToggleSwitch { Location = new Point(0, 2), Checked = false };
+            stickerToggle.CheckedChanged += (s, e) => StickerToggled?.Invoke(stickerToggle.Checked);
+            stickerL = new Label { Location = new Point(50, 2), AutoSize = true };
+            stickerL.Tag = "EnableSticker"; dynamicLabels.Add(stickerL);
+            tgl2.Controls.AddRange(new Control[] { stickerToggle, stickerL });
             
             Button stickerSetupBtn = new Button { 
                 Size = new Size(180, 30), BackColor = Color.FromArgb(58, 58, 60), ForeColor = Color.White, 
@@ -257,9 +287,14 @@ namespace MosaicCensorSystem.UI
             };
             stickerSetupBtn.FlatAppearance.BorderSize = 0;
             stickerSetupBtn.Tag = "StickerSetupBtn"; dynamicLabels.Add(stickerSetupBtn);
-            stickerSetupBtn.Click += (s, e) => { new StickerSetupForm().ShowDialog(); };
+            stickerSetupBtn.Click += (s, e) => { 
+                var setup = new StickerSetupForm((target, enabled, pngs) => {
+                    TargetStickerConfigChanged?.Invoke(target, enabled, pngs);
+                });
+                setup.ShowDialog();
+            };
 
-            swP.Controls.AddRange(new Control[] { switchesLabel, tgl1, stickerSetupBtn });
+            swP.Controls.AddRange(new Control[] { switchesLabel, tgl1, tgl2, stickerSetupBtn });
             row1.Controls.AddRange(new Control[] { mdlP, swP });
             tlp.Controls.Add(row1, 0, 1);
 
@@ -269,6 +304,16 @@ namespace MosaicCensorSystem.UI
             mosRadio = new RadioButton { AutoSize = true, Checked = true, Margin = new Padding(5, 3, 10, 3) };
             blurRadio = new RadioButton { AutoSize = true, Margin = new Padding(5, 3, 10, 3) };
             boxRadio = new RadioButton { AutoSize = true, Margin = new Padding(5, 3, 10, 3) };
+            
+            Action emitCensorType = () => {
+                if (mosRadio.Checked) CensorTypeChanged?.Invoke(Detection.CensorType.Mosaic);
+                else if (blurRadio.Checked) CensorTypeChanged?.Invoke(Detection.CensorType.Blur);
+                else if (boxRadio.Checked) CensorTypeChanged?.Invoke(Detection.CensorType.BlackBox);
+            };
+            mosRadio.CheckedChanged += (s, e) => emitCensorType();
+            blurRadio.CheckedChanged += (s, e) => emitCensorType();
+            boxRadio.CheckedChanged += (s, e) => emitCensorType();
+            
             fmtP.Controls.AddRange(new Control[] { formatLabel, mosRadio, blurRadio, boxRadio });
             tlp.Controls.Add(fmtP, 0, 2);
 
@@ -278,11 +323,13 @@ namespace MosaicCensorSystem.UI
             Panel confP = new Panel { Size = new Size(320, 70), Margin = new Padding(0, 0, 20, 0) };
             confL = new Label { Location = new Point(0, 0), AutoSize = true, ForeColor = Color.Gray };
             confSlider = new TrackBar { Location = new Point(0, 25), Width = 300, Minimum = 1, Maximum = 100, Value = 40, TickFrequency = 10 };
+            confSlider.ValueChanged += (s, e) => ConfidenceChanged?.Invoke(confSlider.Value / 100f);
             confP.Controls.AddRange(new Control[] { confL, confSlider });
 
             Panel strP = new Panel { Size = new Size(320, 70) };
             strL = new Label { Location = new Point(0, 0), AutoSize = true, ForeColor = Color.Gray };
             strSlider = new TrackBar { Location = new Point(0, 25), Width = 300, Minimum = 5, Maximum = 50, Value = 20, TickFrequency = 5 };
+            strSlider.ValueChanged += (s, e) => StrengthChanged?.Invoke(strSlider.Value);
             strP.Controls.AddRange(new Control[] { strL, strSlider });
 
             row3.Controls.AddRange(new Control[] { confP, strP });
@@ -325,7 +372,7 @@ namespace MosaicCensorSystem.UI
                         Margin = new Padding(0, 0, 15, 4), Height = 24
                     };
                     
-                    var tg = new ToggleSwitch { Margin = new Padding(0, 2, 5, 0), Checked = true };
+                    var tg = new ToggleSwitch { Margin = new Padding(0, 2, 5, 0), Checked = true, Tag = itemKey };
                     
                     var lbl = new Label { 
                         Margin = new Padding(0, 5, 2, 0), AutoSize = true, 
@@ -338,6 +385,19 @@ namespace MosaicCensorSystem.UI
                         Font = new Font("Segoe UI", 9F), ForeColor = Color.LightGray
                     };
                     stickerChk.Tag = "StickerChk"; dynamicLabels.Add(stickerChk);
+
+                    tg.CheckedChanged += (s, e) => {
+                        var targetsList = new List<string>();
+                        foreach (var innerCatFp in fp.Controls.OfType<FlowLayoutPanel>()) {
+                            foreach (var innerItemP in innerCatFp.Controls.OfType<FlowLayoutPanel>()) {
+                                var toggle = innerItemP.Controls.OfType<ToggleSwitch>().FirstOrDefault();
+                                if (toggle != null && toggle.Checked && toggle.Tag is string tk) {
+                                    targetsList.Add(tk);
+                                }
+                            }
+                        }
+                        TargetsChanged?.Invoke(targetsList);
+                    };
 
                     itemP.Controls.AddRange(new Control[] { tg, lbl, stickerChk });
                     innerFp.Controls.Add(itemP);
@@ -404,6 +464,42 @@ namespace MosaicCensorSystem.UI
 
             logBox.AppendText($"[System] Language updated to {I18n.CurrentLanguage}\r\n");
         }
+
+        // --- IGuiController Methods ---
+        public void UpdateStatus(string message, Color color) { } // Target for Status label not explicitly defined in Mockup, skipped visual
+        
+        public void LogMessage(string message)
+        {
+            if (this.IsDisposed) return;
+            if (this.InvokeRequired) { this.BeginInvoke(new Action(() => LogMessage(message))); return; }
+            if (logBox != null) { logBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}\r\n"); logBox.SelectionStart = logBox.Text.Length; logBox.ScrollToCaret(); }
+        }
+
+        public void SetRunningState(bool isRunning)
+        {
+            if (this.IsDisposed) return;
+            if (this.InvokeRequired) { this.BeginInvoke(new Action(() => SetRunningState(isRunning))); return; }
+            if (startButton != null) startButton.Enabled = !isRunning;
+            if (stopButton != null) stopButton.Enabled = isRunning;
+        }
+
+        public void UpdateGpuStatus(string status) { LogMessage($"GPU Status Update: {status}"); }
+        
+        public void SetObbModelAvailable(bool available)
+        {
+            if (this.IsDisposed) return;
+            if (this.InvokeRequired) { this.Invoke(new Action(() => SetObbModelAvailable(available))); return; }
+            if (obbRadio != null) {
+                obbRadio.Enabled = available;
+                if (!available && obbRadio.Checked) stdRadio.Checked = true;
+            }
+        }
+
+        public void RebuildTargetCheckboxes(string[] availableTargets)
+        {
+            // Simple mockup refresh (fully responsive engine needs advanced wiring here if we dynamically rebuild the UI)
+            LogMessage($"Targets updated dynamically: {availableTargets.Length} items.");
+        }
     }
 
     // ==========================================
@@ -411,8 +507,12 @@ namespace MosaicCensorSystem.UI
     // ==========================================
     public class StickerSetupForm : Form
     {
-        public StickerSetupForm()
+        private Action<string, bool, List<string>> _onStickerConfigSaved;
+        private Dictionary<string, (bool Enabled, List<string> Paths)> _tempConfigs = new();
+
+        public StickerSetupForm(Action<string, bool, List<string>> onStickerConfigSaved = null)
         {
+            _onStickerConfigSaved = onStickerConfigSaved;
             this.Text = "Sticker Mapping Configuration";
             this.Size = new Size(500, 600);
             this.StartPosition = FormStartPosition.CenterParent;
@@ -453,10 +553,21 @@ namespace MosaicCensorSystem.UI
 
             foreach (var t in targets)
             {
+                _tempConfigs[t] = (false, new List<string>());
+                
                 Panel row = new Panel { Size = new Size(420, 35), Margin = new Padding(0, 0, 0, 5) };
                 
+                CheckBox enableChk = new CheckBox {
+                    Text = "", Location = new Point(5, 8), AutoSize = true, Checked = false
+                };
+                enableChk.CheckedChanged += (s, e) => {
+                    var conf = _tempConfigs[t];
+                    conf.Enabled = enableChk.Checked;
+                    _tempConfigs[t] = conf;
+                };
+
                 Label lbl = new Label { 
-                    Text = I18n.Get(t), Location = new Point(10, 8), AutoSize = true, 
+                    Text = I18n.Get(t), Location = new Point(25, 8), AutoSize = true, 
                     ForeColor = Color.LightGray, Font = new Font("Segoe UI", 10F, FontStyle.Bold)
                 };
                 
@@ -469,14 +580,34 @@ namespace MosaicCensorSystem.UI
                     using (var picker = new StickerPickerForm(t)) {
                         picker.ShowDialog();
                         pickBtn.Text = $"선택된 스티커 [{picker.SelectedCount}개]";
-                        if (picker.SelectedCount > 0) pickBtn.BackColor = Color.FromArgb(10, 132, 255);
-                        else pickBtn.BackColor = Color.FromArgb(58, 58, 60);
+                        if (picker.SelectedCount > 0) { 
+                            pickBtn.BackColor = Color.FromArgb(10, 132, 255);
+                            enableChk.Checked = true;
+                        } else { 
+                            pickBtn.BackColor = Color.FromArgb(58, 58, 60);
+                            enableChk.Checked = false;
+                        }
+                        
+                        var conf = _tempConfigs[t];
+                        conf.Paths = picker.SelectedFiles;
+                        _tempConfigs[t] = conf;
                     }
                 };
 
-                row.Controls.AddRange(new Control[] { lbl, pickBtn });
+                row.Controls.AddRange(new Control[] { enableChk, lbl, pickBtn });
                 fp.Controls.Add(row);
             }
+            
+            saveBtn.Click += (s, e) => {
+                if (_onStickerConfigSaved != null) {
+                    foreach (var kvp in _tempConfigs) {
+                        if (kvp.Value.Paths.Count > 0) {
+                            _onStickerConfigSaved(kvp.Key, kvp.Value.Enabled, kvp.Value.Paths);
+                        }
+                    }
+                }
+                this.Close();
+            };
         }
     }
 
@@ -486,6 +617,7 @@ namespace MosaicCensorSystem.UI
     public class StickerPickerForm : Form
     {
         public int SelectedCount { get; private set; } = 0;
+        public List<string> SelectedFiles { get; private set; } = new();
 
         public StickerPickerForm(string targetName)
         {
@@ -512,7 +644,15 @@ namespace MosaicCensorSystem.UI
             Button saveBtn = new Button { Text = "적용 (Apply)", Size = new Size(120, 35), Location = new Point(280, 12), BackColor = Color.FromArgb(48, 209, 88), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
             saveBtn.FlatAppearance.BorderSize = 0;
             saveBtn.Click += (s, e) => {
-                SelectedCount = fp.Controls.OfType<Panel>().Count(p => p.Controls.OfType<CheckBox>().FirstOrDefault()?.Checked == true);
+                SelectedFiles.Clear();
+                foreach(var p in fp.Controls.OfType<Panel>()) {
+                    var chk = p.Controls.OfType<CheckBox>().FirstOrDefault();
+                    var pb = p.Controls.OfType<PictureBox>().FirstOrDefault();
+                    if (chk != null && chk.Checked && pb != null) {
+                        SelectedFiles.Add(pb.ImageLocation);
+                    }
+                }
+                SelectedCount = SelectedFiles.Count;
                 this.Close();
             };
             btnPanel.Controls.Add(saveBtn);

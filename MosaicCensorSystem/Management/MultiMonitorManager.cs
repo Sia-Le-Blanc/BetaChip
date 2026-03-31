@@ -22,7 +22,7 @@ namespace MosaicCensorSystem.Management
     /// </summary>
     public class MultiMonitorManager : IOverlayManager
     {
-        private GuiController _ui;
+        private IGuiController _ui;
         private readonly List<SingleMonitorManager> _monitors = new();
         private volatile bool _isRunning = false;
         private CensorSettings _settings = new(true, true, false, false);
@@ -51,7 +51,7 @@ namespace MosaicCensorSystem.Management
             _inferenceGate = new SemaphoreSlim(parallelism, parallelism);
         }
 
-        public void Initialize(GuiController uiController)
+        public void Initialize(IGuiController uiController)
         {
             _ui = uiController;
             string mode = _isGpuActive ? "GPU 병렬 모드" : "CPU 직렬 모드";

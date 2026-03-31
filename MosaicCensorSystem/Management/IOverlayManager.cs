@@ -12,7 +12,7 @@ namespace MosaicCensorSystem.Management
         /// <summary>
         /// 관리자를 초기화합니다.
         /// </summary>
-        void Initialize(GuiController ui);
+        void Initialize(IGuiController ui);
 
         /// <summary>
         /// 오버레이 및 프레임 처리를 시작합니다.

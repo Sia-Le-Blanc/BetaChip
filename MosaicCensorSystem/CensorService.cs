@@ -26,7 +26,7 @@ namespace MosaicCensorSystem
             public DateTime AssignedTime { get; set; }
         }
 
-        private readonly GuiController ui;
+        private readonly IGuiController ui;
         private readonly ScreenCapture capturer;
         private readonly MosaicProcessor processor;
         private readonly Random random = new Random();
@@ -46,6 +46,10 @@ namespace MosaicCensorSystem
         private readonly List<Mat> squareStickers = new();
         private readonly List<Mat> wideStickers = new();
         private readonly Dictionary<int, StickerInfo> trackedStickers = new();
+        
+        // 타겟(부위) 전용 스티커 설정 및 캐시 리스트
+        public readonly Dictionary<string, bool> targetStickerEnabled = new();
+        public readonly Dictionary<string, List<Mat>> targetStickersCache = new();
         private const int STICKER_CLEANUP_INTERVAL_SECONDS = 30;
         private DateTime lastStickerCleanup = DateTime.Now;
 
@@ -62,7 +66,7 @@ namespace MosaicCensorSystem
 
         private bool disposed = false;
 
-        public CensorService(GuiController uiController, SubscriptionInfo subInfo)
+        public CensorService(IGuiController uiController, SubscriptionInfo subInfo)
         {
             ui = uiController;
             _subInfo = subInfo;
@@ -191,13 +195,26 @@ namespace MosaicCensorSystem
 
                     // 스티커 기능 등급 체크 (Patreon 이상)
                     bool canUseStickers = _subInfo.Tier == "patreon" || _subInfo.Tier == "plus";
-                    if (canUseStickers && currentSettings.EnableStickers && (squareStickers.Count > 0 || wideStickers.Count > 0))
+                    if (canUseStickers && currentSettings.EnableStickers)
                     {
                         if (!trackedStickers.TryGetValue(detection.TrackId, out var stickerInfo) || 
                             (DateTime.Now - stickerInfo.AssignedTime).TotalSeconds > 30)
                         {
-                            var stickerList = (float)detection.Width / detection.Height > 1.2f ? wideStickers : squareStickers;
-                            if (stickerList.Count > 0)
+                            List<Mat> stickerList = null;
+
+                            // 1순위: 현재 탐지된 객체의 타겟(부위)에 배정된 전용 스티커가 켜져 있는지 확인
+                            if (targetStickerEnabled.TryGetValue(detection.ClassName, out bool enabled) && enabled &&
+                                targetStickersCache.TryGetValue(detection.ClassName, out var list) && list.Count > 0)
+                            {
+                                stickerList = list;
+                            }
+                            // 2순위: 전용 스티커가 없으면 기존 글로벌 정방형/와이드 스티커 폴백
+                            else if (squareStickers.Count > 0 || wideStickers.Count > 0)
+                            {
+                                stickerList = (float)detection.Width / detection.Height > 1.2f ? wideStickers : squareStickers;
+                            }
+
+                            if (stickerList != null && stickerList.Count > 0)
                             {
                                 stickerInfo = new StickerInfo { 
                                     Sticker = stickerList[random.Next(stickerList.Count)], 
@@ -516,6 +533,9 @@ namespace MosaicCensorSystem
             overlayTextManager?.Dispose();
             foreach (var s in squareStickers) s?.Dispose();
             foreach (var s in wideStickers) s?.Dispose();
+            foreach (var list in targetStickersCache.Values)
+                if (list != null) foreach (var s in list) s?.Dispose();
+            targetStickersCache.Clear();
             disposed = true;
             GC.SuppressFinalize(this);
         }

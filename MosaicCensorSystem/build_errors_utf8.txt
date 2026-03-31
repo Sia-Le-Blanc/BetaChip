@@ -1,0 +1,7 @@
+﻿C:\Users\Win\Desktop\BetaChip\MosaicCensorSystem\Management\MultiMonitorManager.cs(56,19): error CS0266: Cannot implicitly convert type 'MosaicCensorSystem.UI.IGuiController' to 'MosaicCensorSystem.UI.GuiController'. An explicit conversion exists (are you missing a cast?) [C:\Users\Win\Desktop\BetaChip\MosaicCensorSystem\MosaicCensorSystem.csproj]
+
+Build FAILED.
+    4 Warning(s)
+    1 Error(s)
+
+Time Elapsed 00:00:01.11

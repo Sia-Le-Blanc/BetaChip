@@ -14,22 +14,15 @@ namespace MosaicCensorSystem
     public class MosaicApp
     {
         public readonly Form Root;
-        private readonly GuiController uiController;
+        private readonly MockupUIForm uiController;
         private CensorService censorService;
         private readonly ApiService _apiService = new ApiService();
         private SubscriptionInfo _subInfo;
 
         public MosaicApp()
         {
-            Root = new Form
-            {
-                Text = "Mosaic Censor System (Checking License...)",
-                Size = new Size(500, 850),
-                MinimumSize = new Size(480, 700),
-                StartPosition = FormStartPosition.CenterScreen
-            };
-
-            uiController = new GuiController(Root);
+            uiController = new MockupUIForm();
+            Root = uiController;
 
             // 앱 로드 시 서버에서 라이선스 정보 가져오기
             Root.Load += async (s, e) => await InitializeLicenseAndService();
@@ -98,6 +91,7 @@ namespace MosaicCensorSystem
             uiController.StrengthChanged += (val) => censorService.UpdateSetting("Strength", val);
             uiController.ConfidenceChanged += (val) => censorService.UpdateSetting("Confidence", val);
             uiController.TargetsChanged += (targets) => censorService.UpdateSetting("Targets", targets);
+            uiController.TargetStickerConfigChanged += (target, enabled, pngs) => censorService.SetTargetStickerConfig(target, enabled, pngs);
             uiController.GpuSetupClicked += () =>
             {
                 var gpuResult = Helpers.GpuDetector.Detect();

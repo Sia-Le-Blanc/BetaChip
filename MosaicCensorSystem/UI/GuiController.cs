@@ -12,7 +12,7 @@ using MosaicCensorSystem.Utils;
 
 namespace MosaicCensorSystem.UI
 {
-    public class GuiController : IDisposable
+    public class GuiController : IGuiController
     {
         // --- Events ---
         // FpsChanged 이벤트는 오포르투니스틱 추론 도입으로 제거됨
@@ -24,13 +24,15 @@ namespace MosaicCensorSystem.UI
         public event Action<CensorType> CensorTypeChanged;
         public event Action<int> StrengthChanged;
         public event Action<float> ConfidenceChanged;
-        public Action StartClicked;
+        public event Action StartClicked;
         public event Action StopClicked;
         public event Action CaptureAndSaveClicked;
         public event Action<List<string>> TargetsChanged;
         public event Action GpuSetupClicked;
         public event Action<bool> DpiCompatToggled;
         public event Action<bool> ModelTypeChanged; // true: OBB, false: Standard
+
+        public event Action<string, bool, List<string>> TargetStickerConfigChanged; // Not used in legacy, needed for interface
 
         private readonly Form rootForm;
         private Label titleLabel;

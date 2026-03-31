@@ -14,7 +14,7 @@ namespace MosaicCensorSystem.Management
 {
     public class SingleMonitorManager : IOverlayManager
     {
-        private GuiController ui;
+        private IGuiController ui;
         private readonly ScreenCapture capturer;
         private readonly FullscreenOverlay overlay;
         private readonly bool _ownsCapture;
@@ -59,7 +59,7 @@ namespace MosaicCensorSystem.Management
         }
 
         public int MonitorIndex => _monitorIndex;
-        public void Initialize(GuiController uiController) => ui = uiController;
+        public void Initialize(IGuiController uiController) => ui = uiController;
 
         public void Start(Func<Mat, Mat> frameProcessor)
         {
